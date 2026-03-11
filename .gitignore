@@ -1,0 +1,33 @@
+# SPEC CPU 2017 (linked externally, not in repo due to licensing)
+benchmarks/spec
+
+# Build artifacts
+*.o
+*.exe
+/m2sim
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+# CoreMark source (cloned from upstream)
+benchmarks/coremark/
+embench-iot/
+agent/node_modules/
+agent/state.json
+
+# Agent workspace (managed outside repo)
+workspace/
+
+# EmBench native calibration build artifacts
+benchmarks/embench-native-build/
+
+# Profiling output
+*.prof
+
+# Python cache
+__pycache__/
