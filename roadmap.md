@@ -21,30 +21,40 @@ Build a cycle-accurate Apple M1 CPU simulator (M1Sim) on the Akita framework tha
 
 ## Milestones
 
-### M1: Project Bootstrap ⬜ NOT STARTED
+### M1: Project Bootstrap ✅ DONE (Cycle 1-2)
 **Goal:** Set up Go module, project structure, CLAUDE.md, CI workflow. Copy and adapt m2sim codebase to m1sim (rename module, update M1-specific comments).
-**Cycles:** 5
+**Result:** go build ./... passes. L2=12MB, branch penalty=14 cycles.
 
-### M2: Functional Emulator ⬜ NOT STARTED
-**Goal:** ARM64 instruction decode and functional emulation — ALU, load/store, branches, SIMD, syscalls, ELF loading. Must correctly execute ARM64 user-space programs.
-**Cycles:** 6
+### M2: Fix Critical Pipeline Bug + Test Infrastructure ⬜ IN PROGRESS
+**Goal:** Fix the 8-wide superscalar pipeline bug (SVC not handled in secondary slots causing infinite loop), fix M2-specific test values to M1 values, build PolyBench ELFs, collect M1 hardware baselines.
+**Why combined:** These are all small fixes that unblock validation work.
+**Cycles budget:** 6
 
-### M3: Timing Model ⬜ NOT STARTED
-**Goal:** Cycle-accurate pipeline simulation — fetch/decode/execute/memory/writeback stages, L1I/L1D/L2 cache hierarchy, branch predictor, superscalar issue. Parameterized for M1.
-**Cycles:** 6
+**Acceptance criteria:**
+- `go test ./timing/...` all pass (no failures)
+- `go test ./benchmarks/ -run TestArithmeticSequential -timeout 5s` passes
+- `go test ./benchmarks/ -run TestPolybench` doesn't fail (either passes or skips with ELF found)
+- PolyBench ELF binaries exist in benchmarks/polybench/
+- M1 hardware baselines exist in benchmarks/native/m1_baseline.json
 
-### M4: PolyBench Integration ⬜ NOT STARTED
-**Goal:** Compile PolyBench/C benchmarks for ARM64 (cross-compiled or native), integrate into test framework, run them through simulator, collect M1 hardware baselines.
-**Cycles:** 5
+### M3: PolyBench End-to-End Validation ⬜ NOT STARTED
+**Goal:** Run all 7 PolyBench benchmarks through the simulator, compare against M1 hardware measurements. Measure initial accuracy.
+**Cycles:** 4
 
-### M5: Calibration & Validation ⬜ NOT STARTED
-**Goal:** Tune M1 microarch parameters (cache latencies, pipeline widths, branch penalty) to achieve <20% average error and <50% max error across all PolyBench benchmarks.
+### M4: Calibration & Validation ⬜ NOT STARTED
+**Goal:** Tune M1 microarch parameters to achieve <20% average error and <50% max error across all PolyBench benchmarks.
 **Cycles:** 8
 
 ## Lessons Learned
-*(Updated each cycle)*
+- m2sim was more complete than expected; nearly everything (emu, timing, benchmarks) was already copied
+- Critical bug: 8-wide superscalar pipeline (tickOctupleIssue) doesn't handle SVC in secondary slots 2-8
+- Apple clang can build aarch64-unknown-none-elf binaries using lld (installed via homebrew)
+- Tests were copied verbatim from m2sim and still assert M2 values, need updating
 
 ## Cycle History
 | Cycle | Phase | Action |
 |-------|-------|--------|
 | 1 | Planning | Initial roadmap created, m2sim reference studied |
+| 2 | Implementation | Bootstrap: cloned m2sim, built project, go build passes |
+| 3 | Verification | Verification cycle |
+| 4 | Planning | Deep repo analysis: found critical pipeline bug, updated roadmap |
