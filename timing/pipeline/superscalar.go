@@ -1002,9 +1002,33 @@ func canIssueWith(newInst *IDEXRegister, earlier *[8]*IDEXRegister, earlierCount
 		return false
 	}
 
-	// Cannot issue branches in superscalar mode (only in slot 0)
+	// Unconditional control-flow changes (BL, BLR, RET, etc.) remain slot-0 only.
+	// Conditional branches (B.cond, CBZ, CBNZ, TBZ, TBNZ) can co-issue in secondary
+	// slots since they don't change control flow until execute resolves them.
 	if newInst.IsBranch {
-		return false
+		if newInst.Inst == nil {
+			return false
+		}
+		switch newInst.Inst.Op {
+		case insts.OpBCond:
+			// B.cond reads PSTATE flags. Block if any earlier instruction in this
+			// issue window sets flags (same-cycle flag forwarding is not supported).
+			for i := 0; i < earlierCount; i++ {
+				prev := earlier[i]
+				if prev != nil && prev.Inst != nil && prev.Inst.SetFlags {
+					return false
+				}
+			}
+			// B.cond reads no GP registers (only PSTATE flags), so it has no
+			// register RAW hazards with earlier instructions. Return true here
+			// to skip the register RAW check loop below.
+			return true
+		case insts.OpCBZ, insts.OpCBNZ, insts.OpTBZ, insts.OpTBNZ:
+			// These branches compare a register; fall through to normal RAW checks.
+		default:
+			// All other branches (BL, BLR, RET, etc.) stay in slot 0 only.
+			return false
+		}
 	}
 
 	// Cannot issue syscalls in secondary slots

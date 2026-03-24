@@ -5767,6 +5767,12 @@ func (p *Pipeline) tickOctupleIssue() {
 	// Track CMP+B.cond fusion for issue count adjustment
 	fusedCMPBcond := false
 
+	// Track if a conditional branch was issued in a secondary slot.
+	// If so, stop issuing further slots (instructions after the branch are wrong-path).
+	secondaryBranchIssued := false
+	secondaryBranchPredTaken := false
+	secondaryBranchTarget := uint64(0)
+
 	if p.ifid.Valid && !stallResult.StallID && !stallResult.FlushID && !execStall && !memStall {
 		decResult := p.decodeStage.Decode(p.ifid.InstructionWord, p.ifid.PC)
 
@@ -5868,11 +5874,16 @@ func (p *Pipeline) tickOctupleIssue() {
 				nextIDEX2.fromIDEX(&tempIDEX2)
 				issuedInsts[issuedCount] = &tempIDEX2
 				issuedCount++
+				if tempIDEX2.IsBranch {
+					secondaryBranchIssued = true
+					secondaryBranchPredTaken = p.ifid2.PredictedTaken
+					secondaryBranchTarget = p.ifid2.PredictedTarget
+				}
 			}
 		}
 
 		// Decode slot 3
-		if p.ifid3.Valid && nextIDEX2.Valid {
+		if p.ifid3.Valid && nextIDEX2.Valid && !secondaryBranchIssued {
 			decResult3 := p.decodeStage.Decode(p.ifid3.InstructionWord, p.ifid3.PC)
 			tempIDEX3 := IDEXRegister{
 				Valid:           true,
@@ -5896,11 +5907,16 @@ func (p *Pipeline) tickOctupleIssue() {
 				nextIDEX3.fromIDEX(&tempIDEX3)
 				issuedInsts[issuedCount] = &tempIDEX3
 				issuedCount++
+				if tempIDEX3.IsBranch {
+					secondaryBranchIssued = true
+					secondaryBranchPredTaken = p.ifid3.PredictedTaken
+					secondaryBranchTarget = p.ifid3.PredictedTarget
+				}
 			}
 		}
 
 		// Decode slot 4
-		if p.ifid4.Valid && nextIDEX3.Valid {
+		if p.ifid4.Valid && nextIDEX3.Valid && !secondaryBranchIssued {
 			decResult4 := p.decodeStage.Decode(p.ifid4.InstructionWord, p.ifid4.PC)
 			tempIDEX4 := IDEXRegister{
 				Valid:           true,
@@ -5924,11 +5940,16 @@ func (p *Pipeline) tickOctupleIssue() {
 				nextIDEX4.fromIDEX(&tempIDEX4)
 				issuedInsts[issuedCount] = &tempIDEX4
 				issuedCount++
+				if tempIDEX4.IsBranch {
+					secondaryBranchIssued = true
+					secondaryBranchPredTaken = p.ifid4.PredictedTaken
+					secondaryBranchTarget = p.ifid4.PredictedTarget
+				}
 			}
 		}
 
 		// Decode slot 5
-		if p.ifid5.Valid && nextIDEX4.Valid {
+		if p.ifid5.Valid && nextIDEX4.Valid && !secondaryBranchIssued {
 			decResult5 := p.decodeStage.Decode(p.ifid5.InstructionWord, p.ifid5.PC)
 			tempIDEX5 := IDEXRegister{
 				Valid:           true,
@@ -5952,11 +5973,16 @@ func (p *Pipeline) tickOctupleIssue() {
 				nextIDEX5.fromIDEX(&tempIDEX5)
 				issuedInsts[issuedCount] = &tempIDEX5
 				issuedCount++
+				if tempIDEX5.IsBranch {
+					secondaryBranchIssued = true
+					secondaryBranchPredTaken = p.ifid5.PredictedTaken
+					secondaryBranchTarget = p.ifid5.PredictedTarget
+				}
 			}
 		}
 
 		// Decode slot 6
-		if p.ifid6.Valid && nextIDEX5.Valid {
+		if p.ifid6.Valid && nextIDEX5.Valid && !secondaryBranchIssued {
 			decResult6 := p.decodeStage.Decode(p.ifid6.InstructionWord, p.ifid6.PC)
 			tempIDEX6 := IDEXRegister{
 				Valid:           true,
@@ -5980,11 +6006,16 @@ func (p *Pipeline) tickOctupleIssue() {
 				nextIDEX6.fromIDEX(&tempIDEX6)
 				issuedInsts[issuedCount] = &tempIDEX6
 				issuedCount++
+				if tempIDEX6.IsBranch {
+					secondaryBranchIssued = true
+					secondaryBranchPredTaken = p.ifid6.PredictedTaken
+					secondaryBranchTarget = p.ifid6.PredictedTarget
+				}
 			}
 		}
 
 		// Decode slot 7
-		if p.ifid7.Valid && nextIDEX6.Valid {
+		if p.ifid7.Valid && nextIDEX6.Valid && !secondaryBranchIssued {
 			decResult7 := p.decodeStage.Decode(p.ifid7.InstructionWord, p.ifid7.PC)
 			tempIDEX7 := IDEXRegister{
 				Valid:           true,
@@ -6008,11 +6039,16 @@ func (p *Pipeline) tickOctupleIssue() {
 				nextIDEX7.fromIDEX(&tempIDEX7)
 				issuedInsts[issuedCount] = &tempIDEX7
 				issuedCount++
+				if tempIDEX7.IsBranch {
+					secondaryBranchIssued = true
+					secondaryBranchPredTaken = p.ifid7.PredictedTaken
+					secondaryBranchTarget = p.ifid7.PredictedTarget
+				}
 			}
 		}
 
 		// Decode slot 8
-		if p.ifid8.Valid && nextIDEX7.Valid {
+		if p.ifid8.Valid && nextIDEX7.Valid && !secondaryBranchIssued {
 			decResult8 := p.decodeStage.Decode(p.ifid8.InstructionWord, p.ifid8.PC)
 			tempIDEX8 := IDEXRegister{
 				Valid:           true,
@@ -6034,6 +6070,11 @@ func (p *Pipeline) tickOctupleIssue() {
 			}
 			if canIssueWith(&tempIDEX8, &issuedInsts, issuedCount) {
 				nextIDEX8.fromIDEX(&tempIDEX8)
+				if tempIDEX8.IsBranch {
+					secondaryBranchIssued = true
+					secondaryBranchPredTaken = p.ifid8.PredictedTaken
+					secondaryBranchTarget = p.ifid8.PredictedTarget
+				}
 			}
 		}
 	} else if (stallResult.StallID || execStall || memStall) && !stallResult.FlushID {
@@ -6094,8 +6135,18 @@ func (p *Pipeline) tickOctupleIssue() {
 		// Shift unissued instructions forward
 		pendingInsts, pendingCount := p.collectPendingFetchInstructions8(issueCount)
 
+		// If a branch was issued in a secondary slot and predicted taken, the pending
+		// instructions (which follow the branch in program order) are from the wrong path.
+		// Discard them and fetch from the branch target instead.
+		if secondaryBranchIssued && secondaryBranchPredTaken {
+			pendingCount = 0
+		}
+
 		// Fill slots with pending instructions first, then fetch new ones
 		fetchPC := p.pc
+		if secondaryBranchIssued && secondaryBranchPredTaken {
+			fetchPC = secondaryBranchTarget
+		}
 		slotIdx := 0
 
 		// Place pending instructions
