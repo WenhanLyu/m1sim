@@ -4,16 +4,16 @@
     "frequency_ghz": 3.228,
     "dataset": "MINI_DATASET",
     "date": "2026-03-25",
-    "methodology": "mach_absolute_time() inside binary, 10000 reps, minimum of 3 runs. Full-binary measurement: init_array() + kernel() + compute_checksum() per iteration (matches simulator ELF workload). Build flags: -march=armv8-a+nofp+nosimd -fno-vectorize -fno-slp-vectorize (matches simulator ELF ISA exactly - no NEON/FP instructions).",
-    "notes": "Scalar-only native build matching simulator ELF instruction set. MINI_DATASET (16x16 matrices). Full-binary timing (init+kernel+checksum) matches what the simulator measures for the full ELF execution. Instruction counts from simulator (same benchmark source compiled to ELF). Hardware CPI is much lower than simulator due to M1 Firestorm OoO execution hiding load latency."
+    "methodology": "mach_absolute_time() inside binary, 10000 reps, minimum of 3 runs. Full-binary measurement: scalar_zero(BSS) + init_array() + kernel() + compute_checksum() per iteration (matches simulator ELF workload exactly). Build flags: -march=armv8-a+nofp+nosimd -fno-vectorize -fno-slp-vectorize (matches simulator ELF ISA exactly - no NEON/FP instructions). Binaries: benchmarks/polybench/*_scalar_r10000.",
+    "notes": "Scalar-only native build matching simulator ELF instruction set. MINI_DATASET (16x16 matrices). Full-binary timing (BSS-clear+init+kernel+checksum) matches what the simulator measures for the full ELF execution. Instruction counts from simulator (same benchmark source compiled to ELF). Hardware CPI is much lower than simulator due to M1 Firestorm OoO execution hiding load latency."
   },
   "baselines": [
     {
       "benchmark": "gemm",
-      "wall_time_ns": 1425,
-      "estimated_cycles": 4599,
+      "wall_time_ns": 1440,
+      "estimated_cycles": 4648,
       "instructions": 13746,
-      "cpi": 0.335
+      "cpi": 0.338
     },
     {
       "benchmark": "atax",
@@ -24,17 +24,17 @@
     },
     {
       "benchmark": "2mm",
-      "wall_time_ns": 2705,
-      "estimated_cycles": 8731,
+      "wall_time_ns": 2688,
+      "estimated_cycles": 8676,
       "instructions": 27816,
-      "cpi": 0.314
+      "cpi": 0.312
     },
     {
       "benchmark": "3mm",
-      "wall_time_ns": 4072,
-      "estimated_cycles": 13144,
+      "wall_time_ns": 4140,
+      "estimated_cycles": 13364,
       "instructions": 40635,
-      "cpi": 0.323
+      "cpi": 0.329
     },
     {
       "benchmark": "mvt",
@@ -45,23 +45,23 @@
     },
     {
       "benchmark": "bicg",
-      "wall_time_ns": 245,
-      "estimated_cycles": 790,
+      "wall_time_ns": 246,
+      "estimated_cycles": 794,
       "instructions": 4434,
-      "cpi": 0.178
+      "cpi": 0.179
     },
     {
       "benchmark": "jacobi-1d",
-      "wall_time_ns": 197,
-      "estimated_cycles": 635,
+      "wall_time_ns": 202,
+      "estimated_cycles": 652,
       "instructions": 5421,
-      "cpi": 0.117
+      "cpi": 0.120
     }
   ],
   "target_accuracy": {
     "avg_error_percent": 60.0,
     "max_error_percent": 150.0,
     "error_formula": "abs(sim_cycles - hw_cycles) / min(sim_cycles, hw_cycles) * 100",
-    "notes": "Targets set for M3 milestone. Compute-heavy benchmarks (gemm, 2mm, 3mm) show <50% error. Memory-heavy small benchmarks (atax, mvt, bicg, jacobi-1d) are harder to model due to missing OoO execution model. Full accuracy improvement requires D-cache integration (M4 milestone)."
+    "notes": "Targets set for M3 milestone. Compute-heavy benchmarks (gemm, 2mm, 3mm) show <50% error. Memory-heavy small benchmarks (atax, mvt, bicg, jacobi-1d) are harder to model accurately due to M1 Firestorm's deep OoO execution that hides memory latency. Full accuracy improvement for small benchmarks requires OoO execution model (M4 milestone)."
   }
 }
