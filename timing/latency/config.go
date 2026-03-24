@@ -72,7 +72,7 @@ func DefaultTimingConfig() *TimingConfig {
 		ALULatency:              1,
 		BranchLatency:           1,
 		BranchMispredictPenalty: 14, // M1 Firestorm: 14-cycle mispredict penalty
-		LoadLatency:             4,
+		LoadLatency:             2, // M1 Firestorm OoO effective load latency (deep OoO hides most physical 4-cycle load latency)
 		StoreLatency:            1,
 		MultiplyLatency:         3,
 		DivideLatencyMin:        10,

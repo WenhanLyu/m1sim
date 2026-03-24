@@ -35,7 +35,8 @@ var _ = Describe("Latency", func() {
 
 		It("should have correct load latency", func() {
 			config := table.Config()
-			Expect(config.LoadLatency).To(Equal(uint64(4)))
+			// M1 Firestorm OoO effective load latency: 2 cycles (OoO hides most physical 4-cycle latency)
+			Expect(config.LoadLatency).To(Equal(uint64(2)))
 		})
 
 		It("should have correct store latency", func() {
@@ -136,10 +137,11 @@ var _ = Describe("Latency", func() {
 	})
 
 	Describe("Memory Instruction Latencies", func() {
-		It("should return 4 cycles for LDR (L1 hit)", func() {
+		It("should return 2 cycles for LDR (effective M1 OoO load latency)", func() {
 			// LDR X0, [X1, #8] -> 0xF9400420
+			// M1 Firestorm: physical 4-cycle L1 hit, but OoO hides latency to effective 2 cycles
 			inst := decoder.Decode(0xF9400420)
-			Expect(table.GetLatency(inst)).To(Equal(uint64(4)))
+			Expect(table.GetLatency(inst)).To(Equal(uint64(2)))
 		})
 
 		It("should return 1 cycle for STR", func() {
@@ -150,9 +152,10 @@ var _ = Describe("Latency", func() {
 
 		It("should return LoadLatency for LDRSW", func() {
 			// LDRSW X0, [X1] -> 0xB9800020
+			// LoadLatency = 2 (M1 Firestorm effective OoO load latency)
 			inst := decoder.Decode(0xB9800020)
 			Expect(inst.Op).To(Equal(insts.OpLDRSW))
-			Expect(table.GetLatency(inst)).To(Equal(uint64(4)))
+			Expect(table.GetLatency(inst)).To(Equal(uint64(2)))
 		})
 	})
 
