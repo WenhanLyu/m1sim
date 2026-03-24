@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "hardware": "Apple M1 Max",
+    "frequency_ghz": 3.228,
+    "dataset": "MINI_DATASET",
+    "date": "2026-03-24",
+    "methodology": "mach_absolute_time() inside binary, 10000 reps, minimum of 5 runs, -O2 -mcpu=apple-m2 -fno-vectorize -fno-slp-vectorize",
+    "notes": "Kernel-only timing: init_array() run once, then 10000 kernel iterations measured. Instruction counts from simulator (same ELF binary)."
+  },
+  "baselines": [
+    {
+      "benchmark": "gemm",
+      "wall_time_ns": 1349,
+      "estimated_cycles": 4355,
+      "instructions": 11824,
+      "cpi": 0.368
+    },
+    {
+      "benchmark": "atax",
+      "wall_time_ns": 153,
+      "estimated_cycles": 494,
+      "instructions": 2193,
+      "cpi": 0.225
+    },
+    {
+      "benchmark": "2mm",
+      "wall_time_ns": 2526,
+      "estimated_cycles": 8154,
+      "instructions": 24614,
+      "cpi": 0.331
+    },
+    {
+      "benchmark": "3mm",
+      "wall_time_ns": 3911,
+      "estimated_cycles": 12625,
+      "instructions": 36153,
+      "cpi": 0.349
+    },
+    {
+      "benchmark": "mvt",
+      "wall_time_ns": 169,
+      "estimated_cycles": 546,
+      "instructions": 2376,
+      "cpi": 0.230
+    },
+    {
+      "benchmark": "bicg",
+      "wall_time_ns": 211,
+      "estimated_cycles": 681,
+      "instructions": 3632,
+      "cpi": 0.188
+    },
+    {
+      "benchmark": "jacobi-1d",
+      "wall_time_ns": 186,
+      "estimated_cycles": 600,
+      "instructions": 5259,
+      "cpi": 0.114
+    }
+  ],
+  "target_accuracy": {
+    "avg_error_percent": 20.0,
+    "max_error_percent": 50.0,
+    "error_formula": "abs(sim_cycles - hw_cycles) / min(sim_cycles, hw_cycles) * 100"
+  }
+}
