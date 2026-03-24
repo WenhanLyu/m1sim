@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"github.com/WenhanLyu/m1sim/emu"
+	"github.com/WenhanLyu/m1sim/insts"
 	"github.com/WenhanLyu/m1sim/timing/cache"
 )
 
@@ -267,6 +268,11 @@ func (s *CachedMemoryStage) AccessSlot(slot MemorySlot) (MemoryResult, bool) {
 		// Idempotency guard: skip duplicate writes on stall replays.
 		if !s.storeIssued || s.storeIssuedPC != pc || s.storeIssuedAddr != addr {
 			s.cache.Write(addr, size, slot.GetStoreValue())
+			// STP (store pair): also write the second value at addr+size
+			inst := slot.GetInst()
+			if inst != nil && inst.Op == insts.OpSTP {
+				s.cache.Write(addr+uint64(size), size, slot.GetStoreValue2())
+			}
 			s.storeIssued = true
 			s.storeIssuedPC = pc
 			s.storeIssuedAddr = addr

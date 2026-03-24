@@ -762,17 +762,24 @@ func (p *Pipeline) tickSingleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
+			// STP (store pair): read the second register value (Rt2)
+			var storeValue2 uint64
+			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
+				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+			}
+
 			nextEXMEM = EXMEMRegister{
-				Valid:      true,
-				PC:         p.idex.PC,
-				Inst:       p.idex.Inst,
-				ALUResult:  execResult.ALUResult,
-				StoreValue: storeValue,
-				Rd:         p.idex.Rd,
-				MemRead:    p.idex.MemRead,
-				MemWrite:   p.idex.MemWrite,
-				RegWrite:   p.idex.RegWrite,
-				MemToReg:   p.idex.MemToReg,
+				Valid:       true,
+				PC:          p.idex.PC,
+				Inst:        p.idex.Inst,
+				ALUResult:   execResult.ALUResult,
+				StoreValue:  storeValue,
+				StoreValue2: storeValue2,
+				Rd:          p.idex.Rd,
+				MemRead:     p.idex.MemRead,
+				MemWrite:    p.idex.MemWrite,
+				RegWrite:    p.idex.RegWrite,
+				MemToReg:    p.idex.MemToReg,
 				// Store computed flags for forwarding to dependent B.cond
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -1101,17 +1108,24 @@ func (p *Pipeline) tickSuperscalar() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
+			// STP (store pair): read the second register value (Rt2)
+			var storeValue2 uint64
+			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
+				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+			}
+
 			nextEXMEM = EXMEMRegister{
-				Valid:      true,
-				PC:         p.idex.PC,
-				Inst:       p.idex.Inst,
-				ALUResult:  execResult.ALUResult,
-				StoreValue: storeValue,
-				Rd:         p.idex.Rd,
-				MemRead:    p.idex.MemRead,
-				MemWrite:   p.idex.MemWrite,
-				RegWrite:   p.idex.RegWrite,
-				MemToReg:   p.idex.MemToReg,
+				Valid:       true,
+				PC:          p.idex.PC,
+				Inst:        p.idex.Inst,
+				ALUResult:   execResult.ALUResult,
+				StoreValue:  storeValue,
+				StoreValue2: storeValue2,
+				Rd:          p.idex.Rd,
+				MemRead:     p.idex.MemRead,
+				MemWrite:    p.idex.MemWrite,
+				RegWrite:    p.idex.RegWrite,
+				MemToReg:    p.idex.MemToReg,
 				// Store computed flags for forwarding
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -1260,7 +1274,8 @@ func (p *Pipeline) tickSuperscalar() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex2.Inst != nil && p.idex2.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex2.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -1840,17 +1855,24 @@ func (p *Pipeline) tickQuadIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
+			// STP (store pair): read the second register value (Rt2)
+			var storeValue2 uint64
+			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
+				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+			}
+
 			nextEXMEM = EXMEMRegister{
-				Valid:      true,
-				PC:         p.idex.PC,
-				Inst:       p.idex.Inst,
-				ALUResult:  execResult.ALUResult,
-				StoreValue: storeValue,
-				Rd:         p.idex.Rd,
-				MemRead:    p.idex.MemRead,
-				MemWrite:   p.idex.MemWrite,
-				RegWrite:   p.idex.RegWrite,
-				MemToReg:   p.idex.MemToReg,
+				Valid:       true,
+				PC:          p.idex.PC,
+				Inst:        p.idex.Inst,
+				ALUResult:   execResult.ALUResult,
+				StoreValue:  storeValue,
+				StoreValue2: storeValue2,
+				Rd:          p.idex.Rd,
+				MemRead:     p.idex.MemRead,
+				MemWrite:    p.idex.MemWrite,
+				RegWrite:    p.idex.RegWrite,
+				MemToReg:    p.idex.MemToReg,
 				// Store computed flags for forwarding
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -1958,7 +1980,8 @@ func (p *Pipeline) tickQuadIssue() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex2.Inst != nil && p.idex2.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex2.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -2017,7 +2040,8 @@ func (p *Pipeline) tickQuadIssue() {
 				PC:         p.idex3.PC,
 				Inst:       p.idex3.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex3.Inst != nil && p.idex3.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex3.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex3.Rd,
 				MemRead:    p.idex3.MemRead,
 				MemWrite:   p.idex3.MemWrite,
@@ -2084,7 +2108,8 @@ func (p *Pipeline) tickQuadIssue() {
 				PC:         p.idex4.PC,
 				Inst:       p.idex4.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex4.Inst != nil && p.idex4.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex4.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex4.Rd,
 				MemRead:    p.idex4.MemRead,
 				MemWrite:   p.idex4.MemWrite,
@@ -2963,18 +2988,25 @@ func (p *Pipeline) tickSextupleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
+			// STP (store pair): read the second register value (Rt2)
+			var storeValue2 uint64
+			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
+				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+			}
+
 			nextEXMEM = EXMEMRegister{
-				Valid:      true,
-				PC:         p.idex.PC,
-				Inst:       p.idex.Inst,
-				ALUResult:  execResult.ALUResult,
-				StoreValue: storeValue,
-				Rd:         p.idex.Rd,
-				MemRead:    p.idex.MemRead,
-				MemWrite:   p.idex.MemWrite,
-				RegWrite:   p.idex.RegWrite,
-				MemToReg:   p.idex.MemToReg,
-				IsFused:    p.idex.IsFused,
+				Valid:       true,
+				PC:          p.idex.PC,
+				Inst:        p.idex.Inst,
+				ALUResult:   execResult.ALUResult,
+				StoreValue:  storeValue,
+				StoreValue2: storeValue2,
+				Rd:          p.idex.Rd,
+				MemRead:     p.idex.MemRead,
+				MemWrite:    p.idex.MemWrite,
+				RegWrite:    p.idex.RegWrite,
+				MemToReg:    p.idex.MemToReg,
+				IsFused:     p.idex.IsFused,
 				// Store computed flags for forwarding
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -3072,7 +3104,8 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex2.Inst != nil && p.idex2.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex2.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -3121,7 +3154,8 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex3.PC,
 				Inst:       p.idex3.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex3.Inst != nil && p.idex3.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex3.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex3.Rd,
 				MemRead:    p.idex3.MemRead,
 				MemWrite:   p.idex3.MemWrite,
@@ -3178,7 +3212,8 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex4.PC,
 				Inst:       p.idex4.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex4.Inst != nil && p.idex4.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex4.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex4.Rd,
 				MemRead:    p.idex4.MemRead,
 				MemWrite:   p.idex4.MemWrite,
@@ -3243,7 +3278,8 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex5.PC,
 				Inst:       p.idex5.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex5.Inst != nil && p.idex5.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex5.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex5.Rd,
 				MemRead:    p.idex5.MemRead,
 				MemWrite:   p.idex5.MemWrite,
@@ -3316,7 +3352,8 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex6.PC,
 				Inst:       p.idex6.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex6.Inst != nil && p.idex6.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex6.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex6.Rd,
 				MemRead:    p.idex6.MemRead,
 				MemWrite:   p.idex6.MemWrite,
@@ -4384,18 +4421,25 @@ func (p *Pipeline) tickOctupleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
+			// STP (store pair): read the second register value (Rt2)
+			var storeValue2 uint64
+			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
+				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+			}
+
 			nextEXMEM = EXMEMRegister{
-				Valid:      true,
-				PC:         p.idex.PC,
-				Inst:       p.idex.Inst,
-				ALUResult:  execResult.ALUResult,
-				StoreValue: storeValue,
-				Rd:         p.idex.Rd,
-				MemRead:    p.idex.MemRead,
-				MemWrite:   p.idex.MemWrite,
-				RegWrite:   p.idex.RegWrite,
-				MemToReg:   p.idex.MemToReg,
-				IsFused:    p.idex.IsFused,
+				Valid:       true,
+				PC:          p.idex.PC,
+				Inst:        p.idex.Inst,
+				ALUResult:   execResult.ALUResult,
+				StoreValue:  storeValue,
+				StoreValue2: storeValue2,
+				Rd:          p.idex.Rd,
+				MemRead:     p.idex.MemRead,
+				MemWrite:    p.idex.MemWrite,
+				RegWrite:    p.idex.RegWrite,
+				MemToReg:    p.idex.MemToReg,
+				IsFused:     p.idex.IsFused,
 				// Store computed flags for forwarding to dependent B.cond
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -4519,7 +4563,8 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex2.Inst != nil && p.idex2.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex2.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -4660,7 +4705,8 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex3.PC,
 				Inst:       p.idex3.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex3.Inst != nil && p.idex3.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex3.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex3.Rd,
 				MemRead:    p.idex3.MemRead,
 				MemWrite:   p.idex3.MemWrite,
@@ -4806,7 +4852,8 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex4.PC,
 				Inst:       p.idex4.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex4.Inst != nil && p.idex4.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex4.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex4.Rd,
 				MemRead:    p.idex4.MemRead,
 				MemWrite:   p.idex4.MemWrite,
@@ -4959,7 +5006,8 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex5.PC,
 				Inst:       p.idex5.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex5.Inst != nil && p.idex5.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex5.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex5.Rd,
 				MemRead:    p.idex5.MemRead,
 				MemWrite:   p.idex5.MemWrite,
@@ -5123,7 +5171,8 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex6.PC,
 				Inst:       p.idex6.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex6.Inst != nil && p.idex6.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex6.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex6.Rd,
 				MemRead:    p.idex6.MemRead,
 				MemWrite:   p.idex6.MemWrite,
@@ -5298,7 +5347,8 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex7.PC,
 				Inst:       p.idex7.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex7.Inst != nil && p.idex7.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex7.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex7.Rd,
 				MemRead:    p.idex7.MemRead,
 				MemWrite:   p.idex7.MemWrite,
@@ -5484,7 +5534,8 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex8.PC,
 				Inst:       p.idex8.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue: execResult.StoreValue,
+				StoreValue:  execResult.StoreValue,
+				StoreValue2: func() uint64 { if p.idex8.Inst != nil && p.idex8.Inst.Op == insts.OpSTP { return p.regFile.ReadReg(p.idex8.Inst.Rt2) }; return 0 }(),
 				Rd:         p.idex8.Rd,
 				MemRead:    p.idex8.MemRead,
 				MemWrite:   p.idex8.MemWrite,

@@ -203,12 +203,13 @@ type SecondaryIDEXRegister struct {
 
 // SecondaryEXMEMRegister holds the second execute result for dual-issue.
 type SecondaryEXMEMRegister struct {
-	Valid      bool
-	PC         uint64
-	Inst       *insts.Instruction
-	ALUResult  uint64
-	StoreValue uint64
-	Rd         uint8
+	Valid       bool
+	PC          uint64
+	Inst        *insts.Instruction
+	ALUResult   uint64
+	StoreValue  uint64
+	StoreValue2 uint64
+	Rd          uint8
 	MemRead    bool
 	MemWrite   bool
 	RegWrite   bool
@@ -274,6 +275,9 @@ func (r *SecondaryEXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *SecondaryEXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *SecondaryEXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // Clear resets the secondary MEM/WB register.
 func (r *SecondaryMEMWBRegister) Clear() {
@@ -355,12 +359,13 @@ type TertiaryIDEXRegister struct {
 
 // TertiaryEXMEMRegister holds the third execute result for 4-wide issue.
 type TertiaryEXMEMRegister struct {
-	Valid      bool
-	PC         uint64
-	Inst       *insts.Instruction
-	ALUResult  uint64
-	StoreValue uint64
-	Rd         uint8
+	Valid       bool
+	PC          uint64
+	Inst        *insts.Instruction
+	ALUResult   uint64
+	StoreValue  uint64
+	StoreValue2 uint64
+	Rd          uint8
 	MemRead    bool
 	MemWrite   bool
 	RegWrite   bool
@@ -426,6 +431,9 @@ func (r *TertiaryEXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *TertiaryEXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *TertiaryEXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // Clear resets the tertiary MEM/WB register.
 func (r *TertiaryMEMWBRegister) Clear() {
@@ -509,12 +517,13 @@ type QuaternaryIDEXRegister struct {
 
 // QuaternaryEXMEMRegister holds the fourth execute result for 4-wide issue.
 type QuaternaryEXMEMRegister struct {
-	Valid      bool
-	PC         uint64
-	Inst       *insts.Instruction
-	ALUResult  uint64
-	StoreValue uint64
-	Rd         uint8
+	Valid       bool
+	PC          uint64
+	Inst        *insts.Instruction
+	ALUResult   uint64
+	StoreValue  uint64
+	StoreValue2 uint64
+	Rd          uint8
 	MemRead    bool
 	MemWrite   bool
 	RegWrite   bool
@@ -579,6 +588,9 @@ func (r *QuaternaryEXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *QuaternaryEXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *QuaternaryEXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // Clear resets the quaternary MEM/WB register.
 func (r *QuaternaryMEMWBRegister) Clear() {
@@ -662,12 +674,13 @@ type QuinaryIDEXRegister struct {
 
 // QuinaryEXMEMRegister holds the fifth execute result for 6-wide issue.
 type QuinaryEXMEMRegister struct {
-	Valid      bool
-	PC         uint64
-	Inst       *insts.Instruction
-	ALUResult  uint64
-	StoreValue uint64
-	Rd         uint8
+	Valid       bool
+	PC          uint64
+	Inst        *insts.Instruction
+	ALUResult   uint64
+	StoreValue  uint64
+	StoreValue2 uint64
+	Rd          uint8
 	MemRead    bool
 	MemWrite   bool
 	RegWrite   bool
@@ -732,6 +745,9 @@ func (r *QuinaryEXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *QuinaryEXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *QuinaryEXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // Clear resets the quinary MEM/WB register.
 func (r *QuinaryMEMWBRegister) Clear() {
@@ -813,12 +829,13 @@ type SenaryIDEXRegister struct {
 
 // SenaryEXMEMRegister holds the sixth execute result for 6-wide issue.
 type SenaryEXMEMRegister struct {
-	Valid      bool
-	PC         uint64
-	Inst       *insts.Instruction
-	ALUResult  uint64
-	StoreValue uint64
-	Rd         uint8
+	Valid       bool
+	PC          uint64
+	Inst        *insts.Instruction
+	ALUResult   uint64
+	StoreValue  uint64
+	StoreValue2 uint64
+	Rd          uint8
 	MemRead    bool
 	MemWrite   bool
 	RegWrite   bool
@@ -883,6 +900,9 @@ func (r *SenaryEXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *SenaryEXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *SenaryEXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // Clear resets the senary MEM/WB register.
 func (r *SenaryMEMWBRegister) Clear() {
@@ -1287,12 +1307,13 @@ type SeptenaryIDEXRegister struct {
 
 // SeptenaryEXMEMRegister holds the seventh execute result for 8-wide issue.
 type SeptenaryEXMEMRegister struct {
-	Valid      bool
-	PC         uint64
-	Inst       *insts.Instruction
-	ALUResult  uint64
-	StoreValue uint64
-	Rd         uint8
+	Valid       bool
+	PC          uint64
+	Inst        *insts.Instruction
+	ALUResult   uint64
+	StoreValue  uint64
+	StoreValue2 uint64
+	Rd          uint8
 	MemRead    bool
 	MemWrite   bool
 	RegWrite   bool
@@ -1357,6 +1378,9 @@ func (r *SeptenaryEXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *SeptenaryEXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *SeptenaryEXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // Clear resets the septenary MEM/WB register.
 func (r *SeptenaryMEMWBRegister) Clear() {
@@ -1467,12 +1491,13 @@ type OctonaryIDEXRegister struct {
 
 // OctonaryEXMEMRegister holds the eighth execute result for 8-wide issue.
 type OctonaryEXMEMRegister struct {
-	Valid      bool
-	PC         uint64
-	Inst       *insts.Instruction
-	ALUResult  uint64
-	StoreValue uint64
-	Rd         uint8
+	Valid       bool
+	PC          uint64
+	Inst        *insts.Instruction
+	ALUResult   uint64
+	StoreValue  uint64
+	StoreValue2 uint64
+	Rd          uint8
 	MemRead    bool
 	MemWrite   bool
 	RegWrite   bool
@@ -1537,6 +1562,9 @@ func (r *OctonaryEXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *OctonaryEXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *OctonaryEXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // Clear resets the octonary MEM/WB register.
 func (r *OctonaryMEMWBRegister) Clear() {

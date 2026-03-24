@@ -96,6 +96,10 @@ type EXMEMRegister struct {
 	// Value to store for store instructions.
 	StoreValue uint64
 
+	// Second value to store for STP (store pair) instructions.
+	// Holds the value from Rt2 register.
+	StoreValue2 uint64
+
 	// Destination register number.
 	Rd uint8
 
@@ -147,6 +151,9 @@ func (r *EXMEMRegister) GetALUResult() uint64 { return r.ALUResult }
 
 // GetStoreValue returns the value to store.
 func (r *EXMEMRegister) GetStoreValue() uint64 { return r.StoreValue }
+
+// GetStoreValue2 returns the second value to store for STP (store pair) instructions.
+func (r *EXMEMRegister) GetStoreValue2() uint64 { return r.StoreValue2 }
 
 // MEMWBRegister holds state between Memory and Writeback stages.
 type MEMWBRegister struct {

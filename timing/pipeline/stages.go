@@ -719,8 +719,16 @@ func (s *MemoryStage) Access(exmem *EXMEMRegister) MemoryResult {
 		// Store: write to memory
 		if exmem.Inst != nil && exmem.Inst.Is64Bit {
 			s.memory.Write64(addr, exmem.StoreValue)
+			// STP (store pair) writes a second consecutive value for Rt2
+			if exmem.Inst.Op == insts.OpSTP {
+				s.memory.Write64(addr+8, exmem.StoreValue2)
+			}
 		} else {
 			s.memory.Write32(addr, uint32(exmem.StoreValue))
+			// STP (store pair) writes a second consecutive value for Rt2
+			if exmem.Inst != nil && exmem.Inst.Op == insts.OpSTP {
+				s.memory.Write32(addr+4, uint32(exmem.StoreValue2))
+			}
 		}
 	}
 
@@ -737,6 +745,7 @@ type MemorySlot interface {
 	GetInst() *insts.Instruction
 	GetALUResult() uint64
 	GetStoreValue() uint64
+	GetStoreValue2() uint64
 }
 
 // MemorySlot performs memory access for any EXMEM slot.
@@ -772,8 +781,16 @@ func (s *MemoryStage) MemorySlot(slot MemorySlot) MemoryResult {
 		// Store: write to memory
 		if inst != nil && inst.Is64Bit {
 			s.memory.Write64(addr, slot.GetStoreValue())
+			// STP (store pair) writes a second consecutive value for Rt2
+			if inst.Op == insts.OpSTP {
+				s.memory.Write64(addr+8, slot.GetStoreValue2())
+			}
 		} else {
 			s.memory.Write32(addr, uint32(slot.GetStoreValue()))
+			// STP (store pair) writes a second consecutive value for Rt2
+			if inst != nil && inst.Op == insts.OpSTP {
+				s.memory.Write32(addr+4, uint32(slot.GetStoreValue2()))
+			}
 		}
 	}
 
