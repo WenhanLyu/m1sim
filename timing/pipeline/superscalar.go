@@ -1084,11 +1084,40 @@ func canIssueWith(newInst *IDEXRegister, earlier *[8]*IDEXRegister, earlierCount
 					hasRAW = true
 				}
 			}
+			// For LDP (load pair), also check Rt2 (the second destination register).
+			// LDP writes two registers: Rd (primary) and Rt2 (secondary).
+			// If the new instruction uses Rt2 as a source, it can't co-issue with LDP.
+			// Example: ldp x29, x30, [sp, #16]; ret — RET uses X30 (Rt2 of LDP).
+			if !hasRAW && prev.MemRead && prev.Inst != nil && prev.Inst.Op == insts.OpLDP {
+				ldpRt2 := prev.Inst.Rt2
+				if ldpRt2 != 31 {
+					if newInst.Rn == ldpRt2 {
+						hasRAW = true
+					}
+					if newInst.Inst != nil && newInst.Inst.Format == insts.FormatDPReg && newInst.Rm == ldpRt2 {
+						hasRAW = true
+					}
+					// Also block if store's value register depends on LDP's Rt2
+					if newInst.MemWrite && newInst.Inst != nil && newInst.Inst.Rd == ldpRt2 {
+						return false
+					}
+				}
+			}
 			// For stores, the value register (Inst.Rd) is read through a
 			// separate path that does NOT support same-cycle forwarding.
 			// Always block co-issue for this dependency.
 			if newInst.MemWrite && newInst.Inst != nil && newInst.Inst.Rd == prev.Rd {
 				return false
+			}
+			// For STP (store pair), also check Rt2: the second stored value.
+			// STP reads two registers (Rd=first, Rt2=second). Rt2 is read via
+			// a separate path that does NOT support same-cycle forwarding.
+			// Block co-issue if producer writes to STP's Rt2.
+			if newInst.MemWrite && newInst.Inst != nil && newInst.Inst.Op == insts.OpSTP {
+				stpRt2 := newInst.Inst.Rt2
+				if stpRt2 != 31 && stpRt2 == prev.Rd {
+					return false
+				}
 			}
 
 			if hasRAW && prev.MemRead {

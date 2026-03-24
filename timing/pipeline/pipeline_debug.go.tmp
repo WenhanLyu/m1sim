@@ -586,14 +586,6 @@ func (p *Pipeline) tickSingleIssue() {
 				usesRn,
 				usesRm,
 			)
-			// Also check load-use hazard for LDP's second register (Rt2).
-			// LDP writes two registers; if the next instruction uses Rt2, stall.
-			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
-				ldpRt2 := p.idex.Inst.Rt2
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-					ldpRt2, nextInst.Rn, sourceRm, usesRn, usesRm,
-				)
-			}
 			// Note: stall cycles for load-use hazards are counted in the fetch
 			// stage when the pipeline is actually stalled (see StallIF handling),
 			// so we do not increment p.stats.Stalls here to avoid double-counting.
@@ -656,7 +648,6 @@ func (p *Pipeline) tickSingleIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
-				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -770,27 +761,17 @@ func (p *Pipeline) tickSingleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2) with forwarding.
-			var storeValue2 uint64
-			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				rt2 := p.idex.Inst.Rt2
-				rt2Value := p.regFile.ReadReg(rt2)
-				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
-				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
-			}
-
 			nextEXMEM = EXMEMRegister{
-				Valid:       true,
-				PC:          p.idex.PC,
-				Inst:        p.idex.Inst,
-				ALUResult:   execResult.ALUResult,
-				StoreValue:  storeValue,
-				StoreValue2: storeValue2,
-				Rd:          p.idex.Rd,
-				MemRead:     p.idex.MemRead,
-				MemWrite:    p.idex.MemWrite,
-				RegWrite:    p.idex.RegWrite,
-				MemToReg:    p.idex.MemToReg,
+				Valid:      true,
+				PC:         p.idex.PC,
+				Inst:       p.idex.Inst,
+				ALUResult:  execResult.ALUResult,
+				StoreValue: storeValue,
+				Rd:         p.idex.Rd,
+				MemRead:    p.idex.MemRead,
+				MemWrite:   p.idex.MemWrite,
+				RegWrite:   p.idex.RegWrite,
+				MemToReg:   p.idex.MemToReg,
 				// Store computed flags for forwarding to dependent B.cond
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -993,7 +974,6 @@ func (p *Pipeline) tickSuperscalar() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
-				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -1006,15 +986,6 @@ func (p *Pipeline) tickSuperscalar() {
 	var memStall2 bool
 	var memResult2 MemoryResult
 	if p.exmem2.Valid {
-		if p.exmem2.Inst != nil && p.exmem2.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
 		if p.exmem2.MemRead || p.exmem2.MemWrite {
 			memResult2, memStall2 = p.accessSecondaryMem(&p.exmem2)
 		}
@@ -1033,7 +1004,6 @@ func (p *Pipeline) tickSuperscalar() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
-			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -1119,27 +1089,17 @@ func (p *Pipeline) tickSuperscalar() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2) with forwarding.
-			var storeValue2 uint64
-			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				rt2 := p.idex.Inst.Rt2
-				rt2Value := p.regFile.ReadReg(rt2)
-				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
-				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
-			}
-
 			nextEXMEM = EXMEMRegister{
-				Valid:       true,
-				PC:          p.idex.PC,
-				Inst:        p.idex.Inst,
-				ALUResult:   execResult.ALUResult,
-				StoreValue:  storeValue,
-				StoreValue2: storeValue2,
-				Rd:          p.idex.Rd,
-				MemRead:     p.idex.MemRead,
-				MemWrite:    p.idex.MemWrite,
-				RegWrite:    p.idex.RegWrite,
-				MemToReg:    p.idex.MemToReg,
+				Valid:      true,
+				PC:         p.idex.PC,
+				Inst:       p.idex.Inst,
+				ALUResult:  execResult.ALUResult,
+				StoreValue: storeValue,
+				Rd:         p.idex.Rd,
+				MemRead:    p.idex.MemRead,
+				MemWrite:   p.idex.MemWrite,
+				RegWrite:   p.idex.RegWrite,
+				MemToReg:   p.idex.MemToReg,
 				// Store computed flags for forwarding
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -1288,8 +1248,7 @@ func (p *Pipeline) tickSuperscalar() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex2.Inst == nil || p.idex2.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex2.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -1321,11 +1280,6 @@ func (p *Pipeline) tickSuperscalar() {
 
 			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
 				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
-			// Also check load-use hazard for LDP's second register (Rt2).
-			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
-			}
 		}
 	}
 
@@ -1690,7 +1644,6 @@ func (p *Pipeline) tickQuadIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
-				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -1703,15 +1656,6 @@ func (p *Pipeline) tickQuadIssue() {
 	var memStall2 bool
 	var memResult2 MemoryResult
 	if p.exmem2.Valid {
-		if p.exmem2.Inst != nil && p.exmem2.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
 		if p.exmem2.MemRead || p.exmem2.MemWrite {
 			memResult2, memStall2 = p.accessSecondaryMem(&p.exmem2)
 		}
@@ -1721,15 +1665,6 @@ func (p *Pipeline) tickQuadIssue() {
 	var memStall3 bool
 	var memResult3 MemoryResult
 	if p.exmem3.Valid {
-		if p.exmem3.Inst != nil && p.exmem3.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
 		if p.exmem3.MemRead || p.exmem3.MemWrite {
 			memResult3, memStall3 = p.accessTertiaryMem(&p.exmem3)
 		}
@@ -1750,7 +1685,6 @@ func (p *Pipeline) tickQuadIssue() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
-			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -1764,7 +1698,6 @@ func (p *Pipeline) tickQuadIssue() {
 			Inst:      p.exmem3.Inst,
 			ALUResult: p.exmem3.ALUResult,
 			MemData:   memResult3.MemData,
-			MemData2:  memResult3.MemData2,
 			Rd:        p.exmem3.Rd,
 			RegWrite:  p.exmem3.RegWrite,
 			MemToReg:  p.exmem3.MemToReg,
@@ -1772,17 +1705,6 @@ func (p *Pipeline) tickQuadIssue() {
 	}
 
 	// Quaternary slot memory (ALU results only, no memory port)
-	if p.exmem4.Valid {
-		if p.exmem4.Inst != nil && p.exmem4.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
-	}
 	if p.exmem4.Valid && !memStall {
 		nextMEMWB4 = QuaternaryMEMWBRegister{
 			Valid:     true,
@@ -1874,27 +1796,17 @@ func (p *Pipeline) tickQuadIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2) with forwarding.
-			var storeValue2 uint64
-			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				rt2 := p.idex.Inst.Rt2
-				rt2Value := p.regFile.ReadReg(rt2)
-				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
-				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
-			}
-
 			nextEXMEM = EXMEMRegister{
-				Valid:       true,
-				PC:          p.idex.PC,
-				Inst:        p.idex.Inst,
-				ALUResult:   execResult.ALUResult,
-				StoreValue:  storeValue,
-				StoreValue2: storeValue2,
-				Rd:          p.idex.Rd,
-				MemRead:     p.idex.MemRead,
-				MemWrite:    p.idex.MemWrite,
-				RegWrite:    p.idex.RegWrite,
-				MemToReg:    p.idex.MemToReg,
+				Valid:      true,
+				PC:         p.idex.PC,
+				Inst:       p.idex.Inst,
+				ALUResult:  execResult.ALUResult,
+				StoreValue: storeValue,
+				Rd:         p.idex.Rd,
+				MemRead:    p.idex.MemRead,
+				MemWrite:   p.idex.MemWrite,
+				RegWrite:   p.idex.RegWrite,
+				MemToReg:   p.idex.MemToReg,
 				// Store computed flags for forwarding
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -2002,8 +1914,7 @@ func (p *Pipeline) tickQuadIssue() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex2.Inst == nil || p.idex2.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex2.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -2062,8 +1973,7 @@ func (p *Pipeline) tickQuadIssue() {
 				PC:         p.idex3.PC,
 				Inst:       p.idex3.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex3.Inst == nil || p.idex3.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex3.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex3.Rd,
 				MemRead:    p.idex3.MemRead,
 				MemWrite:   p.idex3.MemWrite,
@@ -2130,8 +2040,7 @@ func (p *Pipeline) tickQuadIssue() {
 				PC:         p.idex4.PC,
 				Inst:       p.idex4.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex4.Inst == nil || p.idex4.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex4.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex4.Rd,
 				MemRead:    p.idex4.MemRead,
 				MemWrite:   p.idex4.MemWrite,
@@ -2146,15 +2055,14 @@ func (p *Pipeline) tickQuadIssue() {
 		}
 	}
 
-	// Detect load-use hazards for primary decode.
-	// Also check secondary and tertiary slots (idex2, idex3) for loads that
-	// could create hazards with the next instruction group.
+	// Detect load-use hazards for primary decode
 	loadUseHazard := false
-	if p.ifid.Valid {
+	if p.idex.Valid && p.idex.MemRead && p.idex.Rd != 31 && p.ifid.Valid {
 		nextInst := p.decodeStage.decoder.Decode(p.ifid.InstructionWord)
 		if nextInst != nil && nextInst.Op != insts.OpUnknown {
 			usesRn := true
 			usesRm := nextInst.Format == insts.FormatDPReg
+
 			sourceRm := nextInst.Rm
 			switch nextInst.Op {
 			case insts.OpSTR, insts.OpSTRQ:
@@ -2162,33 +2070,8 @@ func (p *Pipeline) tickQuadIssue() {
 				sourceRm = nextInst.Rd
 			}
 
-			// Check primary slot (idex)
-			if p.idex.Valid && p.idex.MemRead && p.idex.Rd != 31 {
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
-					p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
-				if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
-					loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-						p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
-				}
-			}
-			// Check secondary slot (idex2) — LDP may be in secondary position
-			if !loadUseHazard && p.idex2.Valid && p.idex2.MemRead && p.idex2.Rd != 31 {
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
-					p.idex2.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
-				if !loadUseHazard && p.idex2.Inst != nil && p.idex2.Inst.Op == insts.OpLDP {
-					loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-						p.idex2.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
-				}
-			}
-			// Check tertiary slot (idex3) — LDP may be in tertiary position
-			if !loadUseHazard && p.idex3.Valid && p.idex3.MemRead && p.idex3.Rd != 31 {
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
-					p.idex3.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
-				if !loadUseHazard && p.idex3.Inst != nil && p.idex3.Inst.Op == insts.OpLDP {
-					loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-						p.idex3.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
-				}
-			}
+			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
+				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
 		}
 	}
 
@@ -2612,112 +2495,58 @@ func (p *Pipeline) forwardFromAllSlots(reg uint8, currentValue uint64) uint64 {
 	}
 
 	// Check memwb stages (oldest first, primary slot first)
-	if p.memwb.Valid && p.memwb.RegWrite {
-		if p.memwb.Rd == reg {
-			if p.memwb.MemToReg {
-				currentValue = p.memwb.MemData
-			} else {
-				currentValue = p.memwb.ALUResult
-			}
-		} else if p.memwb.MemToReg && p.memwb.Inst != nil && p.memwb.Inst.Op == insts.OpLDP {
-			// LDP writes second register (Rt2) with second loaded value (MemData2)
-			if p.memwb.Inst.Rt2 != 31 && p.memwb.Inst.Rt2 == reg {
-				currentValue = p.memwb.MemData2
-			}
-		}
-	}
-	if p.memwb2.Valid && p.memwb2.RegWrite {
-		if p.memwb2.Rd == reg {
-			if p.memwb2.MemToReg {
-				currentValue = p.memwb2.MemData
-			} else {
-				currentValue = p.memwb2.ALUResult
-			}
-		} else if p.memwb2.MemToReg && p.memwb2.Inst != nil && p.memwb2.Inst.Op == insts.OpLDP {
-			if p.memwb2.Inst.Rt2 != 31 && p.memwb2.Inst.Rt2 == reg {
-				currentValue = p.memwb2.MemData2
-			}
-		}
-	}
-	if p.memwb3.Valid && p.memwb3.RegWrite {
-		if p.memwb3.Rd == reg {
-			if p.memwb3.MemToReg {
-				currentValue = p.memwb3.MemData
-			} else {
-				currentValue = p.memwb3.ALUResult
-			}
-		} else if p.memwb3.MemToReg && p.memwb3.Inst != nil && p.memwb3.Inst.Op == insts.OpLDP {
-			if p.memwb3.Inst.Rt2 != 31 && p.memwb3.Inst.Rt2 == reg {
-				currentValue = p.memwb3.MemData2
-			}
-		}
-	}
-	// Slots 4-8 are ALU-only (no memory port), so no LDP Rt2 forwarding needed.
-	// LDP can only reach slots 1-3 (maxMemPorts=3). Use MemData for safety if MemToReg is true.
-	if p.memwb4.Valid && p.memwb4.RegWrite && p.memwb4.Rd == reg {
-		if p.memwb4.MemToReg {
-			currentValue = p.memwb4.MemData
+	if p.memwb.Valid && p.memwb.RegWrite && p.memwb.Rd == reg {
+		if p.memwb.MemToReg {
+			currentValue = p.memwb.MemData
 		} else {
-			currentValue = p.memwb4.ALUResult
+			currentValue = p.memwb.ALUResult
 		}
+	}
+	if p.memwb2.Valid && p.memwb2.RegWrite && p.memwb2.Rd == reg {
+		currentValue = p.memwb2.ALUResult
+	}
+	if p.memwb3.Valid && p.memwb3.RegWrite && p.memwb3.Rd == reg {
+		currentValue = p.memwb3.ALUResult
+	}
+	if p.memwb4.Valid && p.memwb4.RegWrite && p.memwb4.Rd == reg {
+		currentValue = p.memwb4.ALUResult
 	}
 	if p.memwb5.Valid && p.memwb5.RegWrite && p.memwb5.Rd == reg {
-		if p.memwb5.MemToReg {
-			currentValue = p.memwb5.MemData
-		} else {
-			currentValue = p.memwb5.ALUResult
-		}
+		currentValue = p.memwb5.ALUResult
 	}
 	if p.memwb6.Valid && p.memwb6.RegWrite && p.memwb6.Rd == reg {
-		if p.memwb6.MemToReg {
-			currentValue = p.memwb6.MemData
-		} else {
-			currentValue = p.memwb6.ALUResult
-		}
+		currentValue = p.memwb6.ALUResult
 	}
 	if p.memwb7.Valid && p.memwb7.RegWrite && p.memwb7.Rd == reg {
-		if p.memwb7.MemToReg {
-			currentValue = p.memwb7.MemData
-		} else {
-			currentValue = p.memwb7.ALUResult
-		}
+		currentValue = p.memwb7.ALUResult
 	}
 	if p.memwb8.Valid && p.memwb8.RegWrite && p.memwb8.Rd == reg {
-		if p.memwb8.MemToReg {
-			currentValue = p.memwb8.MemData
-		} else {
-			currentValue = p.memwb8.ALUResult
-		}
+		currentValue = p.memwb8.ALUResult
 	}
 
-	// Check exmem stages (newer, higher priority, primary slot first).
-	// NOTE: For load instructions (MemRead=true), ALUResult is the load address,
-	// NOT the loaded data. Data is only available after MEM stage (in memwb).
-	// We should NOT forward from exmem for loads — load-use hazard detection
-	// should ensure no instruction accesses load results before they're in memwb.
-	// For non-load ALU instructions, ALUResult is the computed value.
-	if p.exmem.Valid && p.exmem.RegWrite && p.exmem.Rd == reg && !p.exmem.MemRead {
+	// Check exmem stages (newer, higher priority, primary slot first)
+	if p.exmem.Valid && p.exmem.RegWrite && p.exmem.Rd == reg {
 		currentValue = p.exmem.ALUResult
 	}
-	if p.exmem2.Valid && p.exmem2.RegWrite && p.exmem2.Rd == reg && !p.exmem2.MemRead {
+	if p.exmem2.Valid && p.exmem2.RegWrite && p.exmem2.Rd == reg {
 		currentValue = p.exmem2.ALUResult
 	}
-	if p.exmem3.Valid && p.exmem3.RegWrite && p.exmem3.Rd == reg && !p.exmem3.MemRead {
+	if p.exmem3.Valid && p.exmem3.RegWrite && p.exmem3.Rd == reg {
 		currentValue = p.exmem3.ALUResult
 	}
-	if p.exmem4.Valid && p.exmem4.RegWrite && p.exmem4.Rd == reg && !p.exmem4.MemRead {
+	if p.exmem4.Valid && p.exmem4.RegWrite && p.exmem4.Rd == reg {
 		currentValue = p.exmem4.ALUResult
 	}
-	if p.exmem5.Valid && p.exmem5.RegWrite && p.exmem5.Rd == reg && !p.exmem5.MemRead {
+	if p.exmem5.Valid && p.exmem5.RegWrite && p.exmem5.Rd == reg {
 		currentValue = p.exmem5.ALUResult
 	}
-	if p.exmem6.Valid && p.exmem6.RegWrite && p.exmem6.Rd == reg && !p.exmem6.MemRead {
+	if p.exmem6.Valid && p.exmem6.RegWrite && p.exmem6.Rd == reg {
 		currentValue = p.exmem6.ALUResult
 	}
-	if p.exmem7.Valid && p.exmem7.RegWrite && p.exmem7.Rd == reg && !p.exmem7.MemRead {
+	if p.exmem7.Valid && p.exmem7.RegWrite && p.exmem7.Rd == reg {
 		currentValue = p.exmem7.ALUResult
 	}
-	if p.exmem8.Valid && p.exmem8.RegWrite && p.exmem8.Rd == reg && !p.exmem8.MemRead {
+	if p.exmem8.Valid && p.exmem8.RegWrite && p.exmem8.Rd == reg {
 		currentValue = p.exmem8.ALUResult
 	}
 
@@ -2842,7 +2671,6 @@ func (p *Pipeline) tickSextupleIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
-				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -2855,15 +2683,6 @@ func (p *Pipeline) tickSextupleIssue() {
 	var memStall2 bool
 	var memResult2 MemoryResult
 	if p.exmem2.Valid {
-		if p.exmem2.Inst != nil && p.exmem2.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
 		if p.exmem2.MemRead || p.exmem2.MemWrite {
 			memResult2, memStall2 = p.accessSecondaryMem(&p.exmem2)
 		}
@@ -2873,15 +2692,6 @@ func (p *Pipeline) tickSextupleIssue() {
 	var memStall3 bool
 	var memResult3 MemoryResult
 	if p.exmem3.Valid {
-		if p.exmem3.Inst != nil && p.exmem3.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
 		if p.exmem3.MemRead || p.exmem3.MemWrite {
 			memResult3, memStall3 = p.accessTertiaryMem(&p.exmem3)
 		}
@@ -2902,7 +2712,6 @@ func (p *Pipeline) tickSextupleIssue() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
-			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -2916,7 +2725,6 @@ func (p *Pipeline) tickSextupleIssue() {
 			Inst:      p.exmem3.Inst,
 			ALUResult: p.exmem3.ALUResult,
 			MemData:   memResult3.MemData,
-			MemData2:  memResult3.MemData2,
 			Rd:        p.exmem3.Rd,
 			RegWrite:  p.exmem3.RegWrite,
 			MemToReg:  p.exmem3.MemToReg,
@@ -2924,17 +2732,6 @@ func (p *Pipeline) tickSextupleIssue() {
 	}
 
 	// Quaternary slot memory (ALU results only, no memory port)
-	if p.exmem4.Valid {
-		if p.exmem4.Inst != nil && p.exmem4.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
-	}
 	if p.exmem4.Valid && !memStall {
 		nextMEMWB4 = QuaternaryMEMWBRegister{
 			Valid:     true,
@@ -2949,17 +2746,6 @@ func (p *Pipeline) tickSextupleIssue() {
 	}
 
 	// Quinary slot memory (ALU results only, no memory port)
-	if p.exmem5.Valid {
-		if p.exmem5.Inst != nil && p.exmem5.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
-	}
 	if p.exmem5.Valid && !memStall {
 		nextMEMWB5 = QuinaryMEMWBRegister{
 			Valid:     true,
@@ -2974,17 +2760,6 @@ func (p *Pipeline) tickSextupleIssue() {
 	}
 
 	// Senary slot memory (ALU results only, no memory port)
-	if p.exmem6.Valid {
-		if p.exmem6.Inst != nil && p.exmem6.Inst.Op == insts.OpSVC {
-			if p.syscallHandler != nil {
-				result := p.syscallHandler.Handle()
-				if result.Exited {
-					p.halted = true
-					p.exitCode = result.ExitCode
-				}
-			}
-		}
-	}
 	if p.exmem6.Valid && !memStall {
 		nextMEMWB6 = SenaryMEMWBRegister{
 			Valid:     true,
@@ -3090,28 +2865,18 @@ func (p *Pipeline) tickSextupleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2) with forwarding.
-			var storeValue2 uint64
-			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				rt2 := p.idex.Inst.Rt2
-				rt2Value := p.regFile.ReadReg(rt2)
-				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
-				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
-			}
-
 			nextEXMEM = EXMEMRegister{
-				Valid:       true,
-				PC:          p.idex.PC,
-				Inst:        p.idex.Inst,
-				ALUResult:   execResult.ALUResult,
-				StoreValue:  storeValue,
-				StoreValue2: storeValue2,
-				Rd:          p.idex.Rd,
-				MemRead:     p.idex.MemRead,
-				MemWrite:    p.idex.MemWrite,
-				RegWrite:    p.idex.RegWrite,
-				MemToReg:    p.idex.MemToReg,
-				IsFused:     p.idex.IsFused,
+				Valid:      true,
+				PC:         p.idex.PC,
+				Inst:       p.idex.Inst,
+				ALUResult:  execResult.ALUResult,
+				StoreValue: storeValue,
+				Rd:         p.idex.Rd,
+				MemRead:    p.idex.MemRead,
+				MemWrite:   p.idex.MemWrite,
+				RegWrite:   p.idex.RegWrite,
+				MemToReg:   p.idex.MemToReg,
+				IsFused:    p.idex.IsFused,
 				// Store computed flags for forwarding
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -3209,8 +2974,7 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex2.Inst == nil || p.idex2.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex2.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -3259,8 +3023,7 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex3.PC,
 				Inst:       p.idex3.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex3.Inst == nil || p.idex3.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex3.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex3.Rd,
 				MemRead:    p.idex3.MemRead,
 				MemWrite:   p.idex3.MemWrite,
@@ -3317,8 +3080,7 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex4.PC,
 				Inst:       p.idex4.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex4.Inst == nil || p.idex4.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex4.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex4.Rd,
 				MemRead:    p.idex4.MemRead,
 				MemWrite:   p.idex4.MemWrite,
@@ -3383,8 +3145,7 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex5.PC,
 				Inst:       p.idex5.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex5.Inst == nil || p.idex5.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex5.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex5.Rd,
 				MemRead:    p.idex5.MemRead,
 				MemWrite:   p.idex5.MemWrite,
@@ -3457,8 +3218,7 @@ func (p *Pipeline) tickSextupleIssue() {
 				PC:         p.idex6.PC,
 				Inst:       p.idex6.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex6.Inst == nil || p.idex6.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex6.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex6.Rd,
 				MemRead:    p.idex6.MemRead,
 				MemWrite:   p.idex6.MemWrite,
@@ -3490,11 +3250,6 @@ func (p *Pipeline) tickSextupleIssue() {
 
 			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
 				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
-			// Also check load-use hazard for LDP's second register (Rt2).
-			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
-			}
 		}
 	}
 
@@ -4185,6 +3940,10 @@ func (p *Pipeline) tickOctupleIssue() {
 	if p.exmem.Valid {
 		if p.exmem.Inst != nil && p.exmem.Inst.Op == insts.OpSVC {
 			if p.syscallHandler != nil {
+				// DEBUG: print X0 value before SVC
+				x0 := p.regFile.ReadReg(0)
+				x1 := p.regFile.ReadReg(1)
+				_, _ = fmt.Fprintf(os.Stderr, "DEBUG SVC: X0=%d X1=%d (MEMWB valid=%v pc=0x%x)\n", x0, x1, p.memwb.Valid, p.exmem.PC)
 				result := p.syscallHandler.Handle()
 				if result.Exited {
 					p.halted = true
@@ -4218,7 +3977,6 @@ func (p *Pipeline) tickOctupleIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
-				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -4278,7 +4036,6 @@ func (p *Pipeline) tickOctupleIssue() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
-			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -4292,7 +4049,6 @@ func (p *Pipeline) tickOctupleIssue() {
 			Inst:      p.exmem3.Inst,
 			ALUResult: p.exmem3.ALUResult,
 			MemData:   memResult3.MemData,
-			MemData2:  memResult3.MemData2,
 			Rd:        p.exmem3.Rd,
 			RegWrite:  p.exmem3.RegWrite,
 			MemToReg:  p.exmem3.MemToReg,
@@ -4311,7 +4067,7 @@ func (p *Pipeline) tickOctupleIssue() {
 			}
 		}
 	}
-	if p.exmem4.Valid && !memStall {
+		if p.exmem4.Valid && !memStall {
 		nextMEMWB4 = QuaternaryMEMWBRegister{
 			Valid:     true,
 			PC:        p.exmem4.PC,
@@ -4336,7 +4092,7 @@ func (p *Pipeline) tickOctupleIssue() {
 			}
 		}
 	}
-	if p.exmem5.Valid && !memStall {
+		if p.exmem5.Valid && !memStall {
 		nextMEMWB5 = QuinaryMEMWBRegister{
 			Valid:     true,
 			PC:        p.exmem5.PC,
@@ -4361,7 +4117,7 @@ func (p *Pipeline) tickOctupleIssue() {
 			}
 		}
 	}
-	if p.exmem6.Valid && !memStall {
+		if p.exmem6.Valid && !memStall {
 		nextMEMWB6 = SenaryMEMWBRegister{
 			Valid:     true,
 			PC:        p.exmem6.PC,
@@ -4386,7 +4142,7 @@ func (p *Pipeline) tickOctupleIssue() {
 			}
 		}
 	}
-	if p.exmem7.Valid && !memStall {
+		if p.exmem7.Valid && !memStall {
 		nextMEMWB7 = SeptenaryMEMWBRegister{
 			Valid:     true,
 			PC:        p.exmem7.PC,
@@ -4411,7 +4167,7 @@ func (p *Pipeline) tickOctupleIssue() {
 			}
 		}
 	}
-	if p.exmem8.Valid && !memStall {
+		if p.exmem8.Valid && !memStall {
 		nextMEMWB8 = OctonaryMEMWBRegister{
 			Valid:     true,
 			PC:        p.exmem8.PC,
@@ -4531,28 +4287,18 @@ func (p *Pipeline) tickOctupleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2) with forwarding.
-			var storeValue2 uint64
-			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				rt2 := p.idex.Inst.Rt2
-				rt2Value := p.regFile.ReadReg(rt2)
-				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
-				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
-			}
-
 			nextEXMEM = EXMEMRegister{
-				Valid:       true,
-				PC:          p.idex.PC,
-				Inst:        p.idex.Inst,
-				ALUResult:   execResult.ALUResult,
-				StoreValue:  storeValue,
-				StoreValue2: storeValue2,
-				Rd:          p.idex.Rd,
-				MemRead:     p.idex.MemRead,
-				MemWrite:    p.idex.MemWrite,
-				RegWrite:    p.idex.RegWrite,
-				MemToReg:    p.idex.MemToReg,
-				IsFused:     p.idex.IsFused,
+				Valid:      true,
+				PC:         p.idex.PC,
+				Inst:       p.idex.Inst,
+				ALUResult:  execResult.ALUResult,
+				StoreValue: storeValue,
+				Rd:         p.idex.Rd,
+				MemRead:    p.idex.MemRead,
+				MemWrite:   p.idex.MemWrite,
+				RegWrite:   p.idex.RegWrite,
+				MemToReg:   p.idex.MemToReg,
+				IsFused:    p.idex.IsFused,
 				// Store computed flags for forwarding to dependent B.cond
 				SetsFlags: execResult.SetsFlags,
 				FlagN:     execResult.FlagN,
@@ -4676,8 +4422,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex2.PC,
 				Inst:       p.idex2.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex2.Inst == nil || p.idex2.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex2.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex2.Rd,
 				MemRead:    p.idex2.MemRead,
 				MemWrite:   p.idex2.MemWrite,
@@ -4818,8 +4563,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex3.PC,
 				Inst:       p.idex3.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex3.Inst == nil || p.idex3.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex3.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex3.Rd,
 				MemRead:    p.idex3.MemRead,
 				MemWrite:   p.idex3.MemWrite,
@@ -4965,8 +4709,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex4.PC,
 				Inst:       p.idex4.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex4.Inst == nil || p.idex4.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex4.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex4.Rd,
 				MemRead:    p.idex4.MemRead,
 				MemWrite:   p.idex4.MemWrite,
@@ -5119,8 +4862,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex5.PC,
 				Inst:       p.idex5.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex5.Inst == nil || p.idex5.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex5.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex5.Rd,
 				MemRead:    p.idex5.MemRead,
 				MemWrite:   p.idex5.MemWrite,
@@ -5284,8 +5026,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex6.PC,
 				Inst:       p.idex6.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex6.Inst == nil || p.idex6.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex6.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex6.Rd,
 				MemRead:    p.idex6.MemRead,
 				MemWrite:   p.idex6.MemWrite,
@@ -5460,8 +5201,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex7.PC,
 				Inst:       p.idex7.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex7.Inst == nil || p.idex7.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex7.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex7.Rd,
 				MemRead:    p.idex7.MemRead,
 				MemWrite:   p.idex7.MemWrite,
@@ -5647,8 +5387,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				PC:         p.idex8.PC,
 				Inst:       p.idex8.Inst,
 				ALUResult:  execResult.ALUResult,
-				StoreValue:  execResult.StoreValue,
-				StoreValue2: func() uint64 { if p.idex8.Inst == nil || p.idex8.Inst.Op != insts.OpSTP { return 0 }; rt2 := p.idex8.Inst.Rt2; return p.forwardFromAllSlots(rt2, p.regFile.ReadReg(rt2)) }(),
+				StoreValue: execResult.StoreValue,
 				Rd:         p.idex8.Rd,
 				MemRead:    p.idex8.MemRead,
 				MemWrite:   p.idex8.MemWrite,
@@ -5744,11 +5483,6 @@ func (p *Pipeline) tickOctupleIssue() {
 
 			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
 				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
-			// Also check load-use hazard for LDP's second register (Rt2).
-			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
-			}
 		}
 	}
 
