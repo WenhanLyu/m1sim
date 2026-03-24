@@ -1,5 +1,7 @@
 package pipeline
 
+import "github.com/WenhanLyu/m1sim/insts"
+
 // ForwardSource indicates where a forwarded value should come from.
 type ForwardSource int
 
@@ -13,6 +15,9 @@ const (
 	ForwardFromEXMEM
 	// ForwardFromMEMWB means forward from MEM/WB pipeline register.
 	ForwardFromMEMWB
+	// ForwardFromMEMWBRt2 means forward from MEM/WB's second load data (LDP Rt2).
+	// Used when an LDP instruction's second register (Rt2) is in the MEM/WB stage.
+	ForwardFromMEMWBRt2
 )
 
 // ForwardingResult contains forwarding decisions for both source operands.
@@ -98,16 +103,36 @@ func (h *HazardUnit) detectForwardForReg(
 		return ForwardFromEXMEM
 	}
 
-	// Check MEM/WB forwarding
+	// Check MEM/WB forwarding (primary destination register)
 	if memwb.Valid && memwb.RegWrite && memwb.Rd == reg {
 		return ForwardFromMEMWB
+	}
+
+	// Check MEM/WB forwarding for LDP's second register (Rt2).
+	// LDP writes two registers: Rd (primary) and Rt2 (secondary).
+	// Standard forwarding only checks Rd. We must also check Rt2.
+	// Example: ldp x29, x30, [sp, #0x40]; add sp, sp, #0xa0; ret
+	//   → RET uses X30 (Rn=30), which is LDP's Rt2, not Rd (29).
+	if memwb.Valid && memwb.Inst != nil && memwb.Inst.Op == insts.OpLDP && memwb.Inst.Rt2 == reg {
+		return ForwardFromMEMWBRt2
 	}
 
 	return ForwardNone
 }
 
+// DetectForwardForReg is the exported version of detectForwardForReg.
+// Used by pipeline tick functions to compute forwarding for arbitrary registers.
+func (h *HazardUnit) DetectForwardForReg(
+	reg uint8,
+	exmem *EXMEMRegister,
+	memwb *MEMWBRegister,
+) ForwardSource {
+	return h.detectForwardForReg(reg, exmem, memwb)
+}
+
 // DetectLoadUseHazardDecoded detects load-use hazard using decoded register info.
 // loadRd is the destination of the load instruction in ID/EX.
+// loadRt2 is the second destination (for LDP); pass 31 if not applicable.
 // nextRn, nextRm are the source registers of the next instruction.
 // usesRn, usesRm indicate if the instruction actually uses these operands.
 func (h *HazardUnit) DetectLoadUseHazardDecoded(
@@ -128,6 +153,27 @@ func (h *HazardUnit) DetectLoadUseHazardDecoded(
 		return true
 	}
 
+	return false
+}
+
+// DetectLoadUseHazardLDPRt2 detects load-use hazard for LDP's second register (Rt2).
+// When an LDP instruction is in the ID/EX stage, the loaded data for Rt2 won't be
+// available until after the MEM stage. If the immediately following instruction uses
+// LDP's Rt2 as a source register, a stall is required.
+func (h *HazardUnit) DetectLoadUseHazardLDPRt2(
+	ldpRt2 uint8,
+	nextRn, nextRm uint8,
+	usesRn, usesRm bool,
+) bool {
+	if ldpRt2 == 31 {
+		return false
+	}
+	if usesRn && ldpRt2 == nextRn {
+		return true
+	}
+	if usesRm && ldpRt2 == nextRm {
+		return true
+	}
 	return false
 }
 
@@ -167,6 +213,9 @@ func (h *HazardUnit) GetForwardedValue(
 			return memwb.MemData
 		}
 		return memwb.ALUResult
+	case ForwardFromMEMWBRt2:
+		// Forward LDP's second loaded value (Rt2) from MEM/WB
+		return memwb.MemData2
 	default:
 		return originalValue
 	}

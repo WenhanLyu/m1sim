@@ -586,6 +586,14 @@ func (p *Pipeline) tickSingleIssue() {
 				usesRn,
 				usesRm,
 			)
+			// Also check load-use hazard for LDP's second register (Rt2).
+			// LDP writes two registers; if the next instruction uses Rt2, stall.
+			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
+				ldpRt2 := p.idex.Inst.Rt2
+				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
+					ldpRt2, nextInst.Rn, sourceRm, usesRn, usesRm,
+				)
+			}
 			// Note: stall cycles for load-use hazards are counted in the fetch
 			// stage when the pipeline is actually stalled (see StallIF handling),
 			// so we do not increment p.stats.Stalls here to avoid double-counting.
@@ -762,10 +770,13 @@ func (p *Pipeline) tickSingleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2)
+			// STP (store pair): read the second register value (Rt2) with forwarding.
 			var storeValue2 uint64
 			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+				rt2 := p.idex.Inst.Rt2
+				rt2Value := p.regFile.ReadReg(rt2)
+				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
+				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
 			}
 
 			nextEXMEM = EXMEMRegister{
@@ -1108,10 +1119,13 @@ func (p *Pipeline) tickSuperscalar() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2)
+			// STP (store pair): read the second register value (Rt2) with forwarding.
 			var storeValue2 uint64
 			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+				rt2 := p.idex.Inst.Rt2
+				rt2Value := p.regFile.ReadReg(rt2)
+				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
+				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
 			}
 
 			nextEXMEM = EXMEMRegister{
@@ -1307,6 +1321,11 @@ func (p *Pipeline) tickSuperscalar() {
 
 			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
 				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
+			// Also check load-use hazard for LDP's second register (Rt2).
+			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
+				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
+					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
+			}
 		}
 	}
 
@@ -1855,10 +1874,13 @@ func (p *Pipeline) tickQuadIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2)
+			// STP (store pair): read the second register value (Rt2) with forwarding.
 			var storeValue2 uint64
 			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+				rt2 := p.idex.Inst.Rt2
+				rt2Value := p.regFile.ReadReg(rt2)
+				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
+				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
 			}
 
 			nextEXMEM = EXMEMRegister{
@@ -2141,6 +2163,11 @@ func (p *Pipeline) tickQuadIssue() {
 
 			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
 				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
+			// Also check load-use hazard for LDP's second register (Rt2).
+			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
+				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
+					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
+			}
 		}
 	}
 
@@ -2988,10 +3015,13 @@ func (p *Pipeline) tickSextupleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2)
+			// STP (store pair): read the second register value (Rt2) with forwarding.
 			var storeValue2 uint64
 			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+				rt2 := p.idex.Inst.Rt2
+				rt2Value := p.regFile.ReadReg(rt2)
+				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
+				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
 			}
 
 			nextEXMEM = EXMEMRegister{
@@ -3385,6 +3415,11 @@ func (p *Pipeline) tickSextupleIssue() {
 
 			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
 				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
+			// Also check load-use hazard for LDP's second register (Rt2).
+			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
+				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
+					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
+			}
 		}
 	}
 
@@ -4421,10 +4456,13 @@ func (p *Pipeline) tickOctupleIssue() {
 					forwarding.ForwardRd, rdValue, &p.exmem, &savedMEMWB)
 			}
 
-			// STP (store pair): read the second register value (Rt2)
+			// STP (store pair): read the second register value (Rt2) with forwarding.
 			var storeValue2 uint64
 			if p.idex.Inst != nil && p.idex.Inst.Op == insts.OpSTP {
-				storeValue2 = p.regFile.ReadReg(p.idex.Inst.Rt2)
+				rt2 := p.idex.Inst.Rt2
+				rt2Value := p.regFile.ReadReg(rt2)
+				fwdRt2 := p.hazardUnit.DetectForwardForReg(rt2, &p.exmem, &savedMEMWB)
+				storeValue2 = p.hazardUnit.GetForwardedValue(fwdRt2, rt2Value, &p.exmem, &savedMEMWB)
 			}
 
 			nextEXMEM = EXMEMRegister{
@@ -5631,6 +5669,11 @@ func (p *Pipeline) tickOctupleIssue() {
 
 			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
 				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
+			// Also check load-use hazard for LDP's second register (Rt2).
+			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
+				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
+					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
+			}
 		}
 	}
 
