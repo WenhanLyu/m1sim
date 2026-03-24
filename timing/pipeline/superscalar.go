@@ -229,6 +229,7 @@ type SecondaryMEMWBRegister struct {
 	Inst      *insts.Instruction
 	ALUResult uint64
 	MemData   uint64
+	MemData2  uint64 // Second value for LDP (load pair) instructions
 	Rd        uint8
 	RegWrite  bool
 	MemToReg  bool
@@ -380,6 +381,7 @@ type TertiaryMEMWBRegister struct {
 	Inst      *insts.Instruction
 	ALUResult uint64
 	MemData   uint64
+	MemData2  uint64 // Second value for LDP (load pair) instructions
 	Rd        uint8
 	RegWrite  bool
 	MemToReg  bool
@@ -1128,8 +1130,14 @@ func (r *SecondaryMEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *SecondaryMEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns the second data value for LDP (load pair) instructions.
+func (r *SecondaryMEMWBRegister) GetMemData2() uint64 { return r.MemData2 }
+
 // GetIsFused returns false as fusion only occurs in slot 0.
 func (r *SecondaryMEMWBRegister) GetIsFused() bool { return false }
+
+// GetInst returns the instruction.
+func (r *SecondaryMEMWBRegister) GetInst() *insts.Instruction { return r.Inst }
 
 // WritebackSlot interface implementation for TertiaryMEMWBRegister
 
@@ -1151,8 +1159,14 @@ func (r *TertiaryMEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *TertiaryMEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns the second data value for LDP (load pair) instructions.
+func (r *TertiaryMEMWBRegister) GetMemData2() uint64 { return r.MemData2 }
+
 // GetIsFused returns false as fusion only occurs in slot 0.
 func (r *TertiaryMEMWBRegister) GetIsFused() bool { return false }
+
+// GetInst returns the instruction.
+func (r *TertiaryMEMWBRegister) GetInst() *insts.Instruction { return r.Inst }
 
 // WritebackSlot interface implementation for QuaternaryMEMWBRegister
 
@@ -1174,8 +1188,14 @@ func (r *QuaternaryMEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *QuaternaryMEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns 0 (Quaternary slot has no memory port, LDP not supported).
+func (r *QuaternaryMEMWBRegister) GetMemData2() uint64 { return 0 }
+
 // GetIsFused returns false as fusion only occurs in slot 0.
 func (r *QuaternaryMEMWBRegister) GetIsFused() bool { return false }
+
+// GetInst returns the instruction.
+func (r *QuaternaryMEMWBRegister) GetInst() *insts.Instruction { return r.Inst }
 
 // WritebackSlot interface implementation for QuinaryMEMWBRegister
 
@@ -1197,8 +1217,14 @@ func (r *QuinaryMEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *QuinaryMEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns 0 (Quinary slot has no memory port, LDP not supported).
+func (r *QuinaryMEMWBRegister) GetMemData2() uint64 { return 0 }
+
 // GetIsFused returns false as fusion only occurs in slot 0.
 func (r *QuinaryMEMWBRegister) GetIsFused() bool { return false }
+
+// GetInst returns the instruction.
+func (r *QuinaryMEMWBRegister) GetInst() *insts.Instruction { return r.Inst }
 
 // WritebackSlot interface implementation for SenaryMEMWBRegister
 
@@ -1220,8 +1246,14 @@ func (r *SenaryMEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *SenaryMEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns 0 (Senary slot has no memory port, LDP not supported).
+func (r *SenaryMEMWBRegister) GetMemData2() uint64 { return 0 }
+
 // GetIsFused returns false as fusion only occurs in slot 0.
 func (r *SenaryMEMWBRegister) GetIsFused() bool { return false }
+
+// GetInst returns the instruction.
+func (r *SenaryMEMWBRegister) GetInst() *insts.Instruction { return r.Inst }
 
 // SeptenaryIFIDRegister holds the seventh fetched instruction for 8-wide issue.
 type SeptenaryIFIDRegister struct {
@@ -1394,8 +1426,14 @@ func (r *SeptenaryMEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *SeptenaryMEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns 0 (Septenary slot has no memory port, LDP not supported).
+func (r *SeptenaryMEMWBRegister) GetMemData2() uint64 { return 0 }
+
 // GetIsFused returns false as fusion only occurs in slot 0.
 func (r *SeptenaryMEMWBRegister) GetIsFused() bool { return false }
+
+// GetInst returns the instruction.
+func (r *SeptenaryMEMWBRegister) GetInst() *insts.Instruction { return r.Inst }
 
 // OctonaryIFIDRegister holds the eighth fetched instruction for 8-wide issue.
 type OctonaryIFIDRegister struct {
@@ -1568,5 +1606,11 @@ func (r *OctonaryMEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *OctonaryMEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns 0 (Octonary slot has no memory port, LDP not supported).
+func (r *OctonaryMEMWBRegister) GetMemData2() uint64 { return 0 }
+
 // GetIsFused returns false as fusion only occurs in slot 0.
 func (r *OctonaryMEMWBRegister) GetIsFused() bool { return false }
+
+// GetInst returns the instruction.
+func (r *OctonaryMEMWBRegister) GetInst() *insts.Instruction { return r.Inst }

@@ -648,6 +648,7 @@ func (p *Pipeline) tickSingleIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
+				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -974,6 +975,7 @@ func (p *Pipeline) tickSuperscalar() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
+				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -986,6 +988,15 @@ func (p *Pipeline) tickSuperscalar() {
 	var memStall2 bool
 	var memResult2 MemoryResult
 	if p.exmem2.Valid {
+		if p.exmem2.Inst != nil && p.exmem2.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
 		if p.exmem2.MemRead || p.exmem2.MemWrite {
 			memResult2, memStall2 = p.accessSecondaryMem(&p.exmem2)
 		}
@@ -1004,6 +1015,7 @@ func (p *Pipeline) tickSuperscalar() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
+			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -1644,6 +1656,7 @@ func (p *Pipeline) tickQuadIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
+				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -1656,6 +1669,15 @@ func (p *Pipeline) tickQuadIssue() {
 	var memStall2 bool
 	var memResult2 MemoryResult
 	if p.exmem2.Valid {
+		if p.exmem2.Inst != nil && p.exmem2.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
 		if p.exmem2.MemRead || p.exmem2.MemWrite {
 			memResult2, memStall2 = p.accessSecondaryMem(&p.exmem2)
 		}
@@ -1665,6 +1687,15 @@ func (p *Pipeline) tickQuadIssue() {
 	var memStall3 bool
 	var memResult3 MemoryResult
 	if p.exmem3.Valid {
+		if p.exmem3.Inst != nil && p.exmem3.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
 		if p.exmem3.MemRead || p.exmem3.MemWrite {
 			memResult3, memStall3 = p.accessTertiaryMem(&p.exmem3)
 		}
@@ -1685,6 +1716,7 @@ func (p *Pipeline) tickQuadIssue() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
+			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -1698,6 +1730,7 @@ func (p *Pipeline) tickQuadIssue() {
 			Inst:      p.exmem3.Inst,
 			ALUResult: p.exmem3.ALUResult,
 			MemData:   memResult3.MemData,
+			MemData2:  memResult3.MemData2,
 			Rd:        p.exmem3.Rd,
 			RegWrite:  p.exmem3.RegWrite,
 			MemToReg:  p.exmem3.MemToReg,
@@ -1705,6 +1738,17 @@ func (p *Pipeline) tickQuadIssue() {
 	}
 
 	// Quaternary slot memory (ALU results only, no memory port)
+	if p.exmem4.Valid {
+		if p.exmem4.Inst != nil && p.exmem4.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem4.Valid && !memStall {
 		nextMEMWB4 = QuaternaryMEMWBRegister{
 			Valid:     true,
@@ -2671,6 +2715,7 @@ func (p *Pipeline) tickSextupleIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
+				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -2683,6 +2728,15 @@ func (p *Pipeline) tickSextupleIssue() {
 	var memStall2 bool
 	var memResult2 MemoryResult
 	if p.exmem2.Valid {
+		if p.exmem2.Inst != nil && p.exmem2.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
 		if p.exmem2.MemRead || p.exmem2.MemWrite {
 			memResult2, memStall2 = p.accessSecondaryMem(&p.exmem2)
 		}
@@ -2692,6 +2746,15 @@ func (p *Pipeline) tickSextupleIssue() {
 	var memStall3 bool
 	var memResult3 MemoryResult
 	if p.exmem3.Valid {
+		if p.exmem3.Inst != nil && p.exmem3.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
 		if p.exmem3.MemRead || p.exmem3.MemWrite {
 			memResult3, memStall3 = p.accessTertiaryMem(&p.exmem3)
 		}
@@ -2712,6 +2775,7 @@ func (p *Pipeline) tickSextupleIssue() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
+			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -2725,6 +2789,7 @@ func (p *Pipeline) tickSextupleIssue() {
 			Inst:      p.exmem3.Inst,
 			ALUResult: p.exmem3.ALUResult,
 			MemData:   memResult3.MemData,
+			MemData2:  memResult3.MemData2,
 			Rd:        p.exmem3.Rd,
 			RegWrite:  p.exmem3.RegWrite,
 			MemToReg:  p.exmem3.MemToReg,
@@ -2732,6 +2797,17 @@ func (p *Pipeline) tickSextupleIssue() {
 	}
 
 	// Quaternary slot memory (ALU results only, no memory port)
+	if p.exmem4.Valid {
+		if p.exmem4.Inst != nil && p.exmem4.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem4.Valid && !memStall {
 		nextMEMWB4 = QuaternaryMEMWBRegister{
 			Valid:     true,
@@ -2746,6 +2822,17 @@ func (p *Pipeline) tickSextupleIssue() {
 	}
 
 	// Quinary slot memory (ALU results only, no memory port)
+	if p.exmem5.Valid {
+		if p.exmem5.Inst != nil && p.exmem5.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem5.Valid && !memStall {
 		nextMEMWB5 = QuinaryMEMWBRegister{
 			Valid:     true,
@@ -2760,6 +2847,17 @@ func (p *Pipeline) tickSextupleIssue() {
 	}
 
 	// Senary slot memory (ALU results only, no memory port)
+	if p.exmem6.Valid {
+		if p.exmem6.Inst != nil && p.exmem6.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem6.Valid && !memStall {
 		nextMEMWB6 = SenaryMEMWBRegister{
 			Valid:     true,
@@ -3973,6 +4071,7 @@ func (p *Pipeline) tickOctupleIssue() {
 				Inst:      p.exmem.Inst,
 				ALUResult: p.exmem.ALUResult,
 				MemData:   memResult.MemData,
+				MemData2:  memResult.MemData2,
 				Rd:        p.exmem.Rd,
 				RegWrite:  p.exmem.RegWrite,
 				MemToReg:  p.exmem.MemToReg,
@@ -3985,6 +4084,15 @@ func (p *Pipeline) tickOctupleIssue() {
 	var memStall2 bool
 	var memResult2 MemoryResult
 	if p.exmem2.Valid {
+		if p.exmem2.Inst != nil && p.exmem2.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
 		if p.exmem2.MemRead || p.exmem2.MemWrite {
 			memResult2, memStall2 = p.accessSecondaryMem(&p.exmem2)
 		}
@@ -3994,6 +4102,15 @@ func (p *Pipeline) tickOctupleIssue() {
 	var memStall3 bool
 	var memResult3 MemoryResult
 	if p.exmem3.Valid {
+		if p.exmem3.Inst != nil && p.exmem3.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
 		if p.exmem3.MemRead || p.exmem3.MemWrite {
 			memResult3, memStall3 = p.accessTertiaryMem(&p.exmem3)
 		}
@@ -4014,6 +4131,7 @@ func (p *Pipeline) tickOctupleIssue() {
 			Inst:      p.exmem2.Inst,
 			ALUResult: p.exmem2.ALUResult,
 			MemData:   memResult2.MemData,
+			MemData2:  memResult2.MemData2,
 			Rd:        p.exmem2.Rd,
 			RegWrite:  p.exmem2.RegWrite,
 			MemToReg:  p.exmem2.MemToReg,
@@ -4027,6 +4145,7 @@ func (p *Pipeline) tickOctupleIssue() {
 			Inst:      p.exmem3.Inst,
 			ALUResult: p.exmem3.ALUResult,
 			MemData:   memResult3.MemData,
+			MemData2:  memResult3.MemData2,
 			Rd:        p.exmem3.Rd,
 			RegWrite:  p.exmem3.RegWrite,
 			MemToReg:  p.exmem3.MemToReg,
@@ -4034,6 +4153,17 @@ func (p *Pipeline) tickOctupleIssue() {
 	}
 
 	// Quaternary slot memory (ALU results only, no memory port)
+	if p.exmem4.Valid {
+		if p.exmem4.Inst != nil && p.exmem4.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem4.Valid && !memStall {
 		nextMEMWB4 = QuaternaryMEMWBRegister{
 			Valid:     true,
@@ -4048,6 +4178,17 @@ func (p *Pipeline) tickOctupleIssue() {
 	}
 
 	// Quinary slot memory (ALU results only, no memory port)
+	if p.exmem5.Valid {
+		if p.exmem5.Inst != nil && p.exmem5.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem5.Valid && !memStall {
 		nextMEMWB5 = QuinaryMEMWBRegister{
 			Valid:     true,
@@ -4062,6 +4203,17 @@ func (p *Pipeline) tickOctupleIssue() {
 	}
 
 	// Senary slot memory (ALU results only, no memory port)
+	if p.exmem6.Valid {
+		if p.exmem6.Inst != nil && p.exmem6.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem6.Valid && !memStall {
 		nextMEMWB6 = SenaryMEMWBRegister{
 			Valid:     true,
@@ -4076,6 +4228,17 @@ func (p *Pipeline) tickOctupleIssue() {
 	}
 
 	// Septenary slot memory (ALU results only, no memory port)
+	if p.exmem7.Valid {
+		if p.exmem7.Inst != nil && p.exmem7.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem7.Valid && !memStall {
 		nextMEMWB7 = SeptenaryMEMWBRegister{
 			Valid:     true,
@@ -4090,6 +4253,17 @@ func (p *Pipeline) tickOctupleIssue() {
 	}
 
 	// Octonary slot memory (ALU results only, no memory port)
+	if p.exmem8.Valid {
+		if p.exmem8.Inst != nil && p.exmem8.Inst.Op == insts.OpSVC {
+			if p.syscallHandler != nil {
+				result := p.syscallHandler.Handle()
+				if result.Exited {
+					p.halted = true
+					p.exitCode = result.ExitCode
+				}
+			}
+		}
+	}
 	if p.exmem8.Valid && !memStall {
 		nextMEMWB8 = OctonaryMEMWBRegister{
 			Valid:     true,

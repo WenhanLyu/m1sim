@@ -1,22 +1,23 @@
 #!/bin/bash
-# Build script for PolyBench M2Sim bare-metal benchmarks
+# Build script for PolyBench M1Sim bare-metal benchmarks
 #
 # Usage: ./build.sh [benchmark]
 #   benchmark: gemm (default: all)
 
 set -e
 
-# Cross-compiler
-CC=aarch64-elf-gcc
-OBJDUMP=aarch64-elf-objdump
+# Cross-compiler: use Apple clang with aarch64-unknown-none-elf target + lld linker
+CC="clang --target=aarch64-unknown-none-elf -fuse-ld=lld"
+OBJDUMP=llvm-objdump
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Compiler flags
-# -fno-tree-vectorize: Disable auto-vectorization (M2Sim doesn't support NEON yet)
-CFLAGS="-O2 -ffreestanding -nostdlib -mcpu=apple-m2"
-CFLAGS+=" -fno-tree-vectorize -fno-tree-loop-vectorize"
+# -fno-tree-vectorize: Disable auto-vectorization (M1Sim doesn't support NEON yet)
+CFLAGS="-O2 -ffreestanding -nostdlib"
+CFLAGS+=" -march=armv8-a+nofp+nosimd"  # Disable SIMD/FP registers for simulator compatibility
+CFLAGS+=" -fno-tree-vectorize"
 CFLAGS+=" -I$SCRIPT_DIR/common"
 CFLAGS+=" -DPOLYBENCH_USE_RESTRICT"
 CFLAGS+=" -DMINI_DATASET"
@@ -34,7 +35,7 @@ build_benchmark() {
         return 1
     fi
     
-    echo "Building $name for M2Sim..."
+    echo "Building $name for M1Sim..."
     
     # Compile benchmark source
     $CC $CFLAGS -c "$src_dir/$name.c" -o "$SCRIPT_DIR/$name.o"
@@ -46,11 +47,12 @@ build_benchmark() {
     $CC $CFLAGS -T "$SCRIPT_DIR/linker.ld" \
         "$SCRIPT_DIR/startup.o" \
         "$SCRIPT_DIR/$name.o" \
-        -o "$SCRIPT_DIR/${name}_m2sim.elf" \
-        -lgcc
+        -o "$SCRIPT_DIR/${name}_m2sim.elf"
     
-    # Generate disassembly
-    $OBJDUMP -d "$SCRIPT_DIR/${name}_m2sim.elf" > "$SCRIPT_DIR/${name}_m2sim.dis"
+    # Generate disassembly (if llvm-objdump available)
+    if command -v llvm-objdump &>/dev/null; then
+        llvm-objdump -d "$SCRIPT_DIR/${name}_m2sim.elf" > "$SCRIPT_DIR/${name}_m2sim.dis"
+    fi
     
     echo "Build complete: ${name}_m2sim.elf"
     ls -la "$SCRIPT_DIR/${name}_m2sim.elf"

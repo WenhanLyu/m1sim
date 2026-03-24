@@ -165,6 +165,10 @@ type MEMWBRegister struct {
 	// Data read from memory (for load instructions).
 	MemData uint64
 
+	// Second data value for LDP (load pair) instructions.
+	// Holds the value loaded for Rt2.
+	MemData2 uint64
+
 	// Destination register number.
 	Rd uint8
 
@@ -203,5 +207,11 @@ func (r *MEMWBRegister) GetALUResult() uint64 { return r.ALUResult }
 // GetMemData returns the data loaded from memory.
 func (r *MEMWBRegister) GetMemData() uint64 { return r.MemData }
 
+// GetMemData2 returns the second data value for LDP (load pair) instructions.
+func (r *MEMWBRegister) GetMemData2() uint64 { return r.MemData2 }
+
 // GetIsFused returns true if this is a fused macro-op (e.g., CMP+B.cond).
 func (r *MEMWBRegister) GetIsFused() bool { return r.IsFused }
+
+// GetInst returns the instruction.
+func (r *MEMWBRegister) GetInst() *insts.Instruction { return r.Inst }

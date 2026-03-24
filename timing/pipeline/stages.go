@@ -28,7 +28,7 @@ type DecodeStage struct {
 	decoder *insts.Decoder
 	// Pool of pre-allocated instructions to avoid heap allocations during decode
 	// Supports up to 8 concurrent decode operations (for 8-wide superscalar pipelines)
-	instPool  [8]insts.Instruction
+	instPool  [64]insts.Instruction // Must be >= pipeline_width * pipeline_stages to avoid pool slot reuse corruption
 	poolIndex int
 }
 
@@ -129,6 +129,14 @@ func (s *DecodeStage) isRegWriteInst(inst *insts.Instruction) bool {
 		return true
 	case insts.OpBL, insts.OpBLR:
 		return true // BL/BLR write to X30
+	case insts.OpMOVZ, insts.OpMOVN, insts.OpMOVK:
+		return true // Wide immediate moves write to destination register
+	case insts.OpADR, insts.OpADRP:
+		return true // PC-relative address computation writes to destination
+	case insts.OpMADD, insts.OpMSUB:
+		return true // Multiply-add/sub write to destination
+	case insts.OpUBFM, insts.OpSBFM, insts.OpBFM:
+		return true // Bitfield moves write to destination
 	default:
 		return false
 	}
@@ -339,8 +347,152 @@ func (s *ExecuteStage) ExecuteWithFlags(idex *IDEXRegister, rnValue, rmValue uin
 		// Return (branch to Rn, typically X30)
 		result.BranchTaken = true
 		result.BranchTarget = rnValue
+	case insts.OpMOVZ:
+		// MOVZ: Rd = (Imm << Shift)
+		result.ALUResult = inst.Imm << inst.Shift
+	case insts.OpMOVN:
+		// MOVN: Rd = ~(Imm << Shift)
+		result.ALUResult = ^(inst.Imm << inst.Shift)
+		if !inst.Is64Bit {
+			result.ALUResult = uint64(uint32(result.ALUResult))
+		}
+	case insts.OpMOVK:
+		// MOVK: Rd = (Rd & ~mask) | (Imm << Shift)
+		// The value being kept is the current Rd value (rnValue used as current dest)
+		mask := uint64(0xFFFF) << inst.Shift
+		result.ALUResult = (rnValue &^ mask) | ((inst.Imm << inst.Shift) & mask)
+	case insts.OpADR:
+		// ADR: Rd = PC + offset
+		result.ALUResult = uint64(int64(idex.PC) + inst.BranchOffset)
+	case insts.OpADRP:
+		// ADRP: Rd = (PC & ~0xFFF) + (offset << 12)
+		// BranchOffset is already shifted by 12 in the decoder
+		pageBase := idex.PC & ^uint64(0xFFF)
+		result.ALUResult = uint64(int64(pageBase) + inst.BranchOffset)
+	case insts.OpMADD:
+		// MADD: Rd = Ra + (Rn * Rm)
+		// Ra is stored in Rt2 field, read as RmValue for 3-source instructions
+		raValue := idex.RmValue // Ra operand (3rd source, stored as Rm in pipeline)
+		if inst.Rt2 != 31 {
+			raValue = s.regFile.ReadReg(inst.Rt2)
+		}
+		if inst.Is64Bit {
+			result.ALUResult = raValue + (rnValue * rmValue)
+		} else {
+			result.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+		}
+	case insts.OpMSUB:
+		// MSUB: Rd = Ra - (Rn * Rm)
+		raValue := idex.RmValue
+		if inst.Rt2 != 31 {
+			raValue = s.regFile.ReadReg(inst.Rt2)
+		}
+		if inst.Is64Bit {
+			result.ALUResult = raValue - (rnValue * rmValue)
+		} else {
+			result.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+		}
+	case insts.OpUBFM:
+		// UBFM: Unsigned bitfield move
+		// ALUResult = ubfm(Rn, immr, imms)
+		result.ALUResult = executeBitfield(inst, rnValue, false)
+	case insts.OpSBFM:
+		// SBFM: Signed bitfield move
+		result.ALUResult = executeBitfield(inst, rnValue, true)
+	case insts.OpBFM:
+		// BFM: Bitfield move (with existing destination bits)
+		result.ALUResult = executeBFM(inst, rnValue, rmValue)
 	}
 
+	return result
+}
+
+// executeBitfield implements UBFM and SBFM instruction semantics.
+// These implement logical/arithmetic shifts and sign/zero extension operations.
+func executeBitfield(inst *insts.Instruction, rnValue uint64, signed bool) uint64 {
+	immr := inst.Imm         // rotate amount
+	imms := inst.Imm2        // width-1 (or shift amount for aliases)
+	bits := uint64(64)
+	if !inst.Is64Bit {
+		bits = 32
+		rnValue = uint64(uint32(rnValue))
+	}
+
+	// Handle the common aliases efficiently
+	if imms < immr {
+		// Extract and optionally sign-extend a field
+		width := imms + 1
+		var field uint64
+		if inst.Is64Bit {
+			field = rnValue & ((1 << width) - 1)
+		} else {
+			field = rnValue & uint64((uint32(1) << width) - 1)
+		}
+		shift := bits - immr
+		result := field << shift >> shift // zero-extend first
+		if signed && (field>>(width-1))&1 == 1 {
+			// Sign extend
+			if inst.Is64Bit {
+				mask := ^uint64(0) << width
+				result = field | mask
+			} else {
+				mask := uint32(^uint32(0)) << width
+				result = uint64(uint32(field) | mask)
+			}
+		}
+		return result
+	}
+
+	// Rotate right by immr and mask
+	if immr > 0 {
+		if inst.Is64Bit {
+			rnValue = (rnValue >> immr) | (rnValue << (bits - immr))
+		} else {
+			rn32 := uint32(rnValue)
+			rnValue = uint64((rn32 >> immr) | (rn32 << (bits - immr)))
+		}
+	}
+
+	// Mask to width = imms - immr + 1
+	width := imms - immr + 1
+	var mask uint64
+	if width >= bits {
+		mask = ^uint64(0)
+	} else {
+		mask = (1 << width) - 1
+	}
+	result := rnValue & mask
+
+	if signed && result>>(width-1)&1 == 1 {
+		if inst.Is64Bit {
+			result |= ^uint64(0) << width
+		} else {
+			result = uint64(uint32(result) | (^uint32(0) << width))
+		}
+	}
+
+	if !inst.Is64Bit {
+		result = uint64(uint32(result))
+	}
+	return result
+}
+
+// executeBFM implements BFM (Bitfield Move with existing destination bits).
+func executeBFM(inst *insts.Instruction, rnValue, rdValue uint64) uint64 {
+	// For simplicity, use UBFM logic then merge with destination
+	result := executeBitfield(inst, rnValue, false)
+	immr := inst.Imm
+	imms := inst.Imm2
+	if imms >= immr {
+		width := imms - immr + 1
+		var mask uint64
+		if width >= 64 {
+			mask = ^uint64(0)
+		} else {
+			mask = (1 << width) - 1
+		}
+		return (rdValue &^ mask) | (result & mask)
+	}
 	return result
 }
 
@@ -532,7 +684,8 @@ func NewMemoryStage(memory *emu.Memory) *MemoryStage {
 
 // MemoryResult contains the output of the memory stage.
 type MemoryResult struct {
-	MemData uint64
+	MemData  uint64
+	MemData2 uint64 // Second loaded value for LDP (load pair) instructions
 }
 
 // Access performs memory read or write operations.
@@ -549,8 +702,16 @@ func (s *MemoryStage) Access(exmem *EXMEMRegister) MemoryResult {
 		// Load: read from memory
 		if exmem.Inst != nil && exmem.Inst.Is64Bit {
 			result.MemData = s.memory.Read64(addr)
+			// LDP (load pair) reads a second consecutive value for Rt2
+			if exmem.Inst.Op == insts.OpLDP {
+				result.MemData2 = s.memory.Read64(addr + 8)
+			}
 		} else {
 			result.MemData = uint64(s.memory.Read32(addr))
+			// LDP (load pair) reads a second consecutive value for Rt2
+			if exmem.Inst != nil && exmem.Inst.Op == insts.OpLDP {
+				result.MemData2 = uint64(s.memory.Read32(addr + 4))
+			}
 		}
 	}
 
@@ -594,8 +755,16 @@ func (s *MemoryStage) MemorySlot(slot MemorySlot) MemoryResult {
 		// Load: read from memory
 		if inst != nil && inst.Is64Bit {
 			result.MemData = s.memory.Read64(addr)
+			// LDP (load pair) reads a second consecutive value for Rt2
+			if inst.Op == insts.OpLDP {
+				result.MemData2 = s.memory.Read64(addr + 8)
+			}
 		} else {
 			result.MemData = uint64(s.memory.Read32(addr))
+			// LDP (load pair) reads a second consecutive value for Rt2
+			if inst != nil && inst.Op == insts.OpLDP {
+				result.MemData2 = uint64(s.memory.Read32(addr + 4))
+			}
 		}
 	}
 
@@ -651,14 +820,24 @@ type WritebackSlot interface {
 	GetMemToReg() bool
 	GetALUResult() uint64
 	GetMemData() uint64
+	GetMemData2() uint64 // Second loaded value for LDP (load pair) instructions
 	GetIsFused() bool
+	GetInst() *insts.Instruction
 }
 
 // writebackSlot performs writeback for any MEMWB slot.
 // Returns true if an instruction was retired.
 func (s *WritebackStage) WritebackSlot(slot WritebackSlot) bool {
-	if !slot.IsValid() || !slot.GetRegWrite() {
-		return slot.IsValid() // Valid but no regwrite still counts as retired
+	if !slot.IsValid() {
+		return false // Not retired
+	}
+
+	// Handle base register writeback for pre/post-indexed addressing.
+	// This updates the base register (Rn) or SP after indexed load/store.
+	s.performBaseWriteback(slot)
+
+	if !slot.GetRegWrite() {
+		return true // Valid but no regwrite still counts as retired
 	}
 
 	// Don't write to XZR
@@ -674,7 +853,45 @@ func (s *WritebackStage) WritebackSlot(slot WritebackSlot) bool {
 	}
 
 	s.regFile.WriteReg(slot.GetRd(), value)
+
+	// Handle LDP (load pair): write the second register (Rt2) with the second loaded value.
+	// LDP loads two consecutive values; the pipeline stores the second in MemData2.
+	inst := slot.GetInst()
+	if inst != nil && inst.Op == insts.OpLDP && slot.GetMemToReg() {
+		if inst.Rt2 != 31 {
+			s.regFile.WriteReg(inst.Rt2, slot.GetMemData2())
+		}
+	}
+
 	return true
+}
+
+// performBaseWriteback handles base register writeback for pre/post-indexed
+// load/store instructions (e.g., str x2, [x0], #8 or ldr x0, [sp, #-16]!).
+func (s *WritebackStage) performBaseWriteback(slot WritebackSlot) {
+	inst := slot.GetInst()
+	if inst == nil {
+		return
+	}
+	if inst.IndexMode != insts.IndexPre && inst.IndexMode != insts.IndexPost {
+		return
+	}
+
+	// Compute the writeback address:
+	// - Pre-indexed:  address = base + offset (already in ALUResult), writeback = ALUResult
+	// - Post-indexed: address = base (already in ALUResult), writeback = base + SignedImm
+	var writebackVal uint64
+	if inst.IndexMode == insts.IndexPost {
+		writebackVal = uint64(int64(slot.GetALUResult()) + inst.SignedImm)
+	} else {
+		writebackVal = slot.GetALUResult()
+	}
+
+	if inst.Rn == 31 {
+		s.regFile.SP = writebackVal
+	} else {
+		s.regFile.WriteReg(inst.Rn, writebackVal)
+	}
 }
 
 // WritebackSlots performs batched writeback for multiple MEMWB slots.
@@ -691,6 +908,9 @@ func (s *WritebackStage) WritebackSlots(slots []WritebackSlot) uint64 {
 
 		retired++
 
+		// Handle base register writeback for pre/post-indexed addressing
+		s.performBaseWriteback(slot)
+
 		// Skip register write operations
 		if !slot.GetRegWrite() || slot.GetRd() == 31 {
 			continue
@@ -706,6 +926,14 @@ func (s *WritebackStage) WritebackSlots(slots []WritebackSlot) uint64 {
 
 		// Write to register file
 		s.regFile.WriteReg(slot.GetRd(), value)
+
+		// Handle LDP (load pair): write the second register (Rt2) with the second loaded value.
+		inst := slot.GetInst()
+		if inst != nil && inst.Op == insts.OpLDP && slot.GetMemToReg() {
+			if inst.Rt2 != 31 {
+				s.regFile.WriteReg(inst.Rt2, slot.GetMemData2())
+			}
+		}
 	}
 
 	return retired
