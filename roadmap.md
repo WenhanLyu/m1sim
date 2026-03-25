@@ -65,7 +65,7 @@ Average error: 123.6% (target: <20%)
 
 **Cycles Budget:** 5
 
-### M4: MADD Accumulator Chain Optimization ⬜ IN PROGRESS
+### M4: MADD Accumulator Chain Optimization ✅ DONE (Cycle 15-17)
 **Goal:** Reduce average error from 28.9% to <20% by fixing the MADD-accumulator pipeline issue.
 
 **Root Cause Discovered (Athena, Cycle 14):**
@@ -106,12 +106,27 @@ Deep pipeline analysis revealed:
 3. `go build ./...` passes
 4. `go test ./timing/... -timeout 60s` passes
 
-**Cycles Budget:** 4
+**Cycles Budget:** 4 (actual: 3 cycles)
 
-**Files to change:**
-- `timing/pipeline/superscalar.go`: `canIssueWith()` — relax WAW for consecutive MADD/MSUB with same accumulator
-- `timing/pipeline/pipeline.go`: `tickOctupleIssue()` execute section — add MADD Ra forwarding from EXMEM stages
-- `timing/pipeline/stages.go`: `ExecuteWithFlags()` for OpMADD/OpMSUB — use idex.RmValue as Ra (after pipeline sets it up via forwarding) OR add inline Ra override
+**Result (Cycle 17):**
+```
+benchmark    sim_cycles  hw_cycles   error%  pass?
+gemm               4472       4648     3.9%   PASS ✅
+atax               1097        950    15.5%   PASS ✅
+2mm                9553       8676    10.1%   PASS ✅
+3mm               13993      13364     4.7%   PASS ✅
+mvt                1076       1036     3.9%   PASS ✅
+bicg               1544       1446     6.8%   PASS ✅
+jacobi-1d          2187       1765    23.9%   PASS ✅
+Average error: 9.8% (target: <20%) ✅
+Max error:    23.9% (target: <50%) ✅
+```
+
+**Key insight:** The biggest gain was same-cycle MEM-to-EX forwarding (eliminating load-use stalls), not just WAW bypass.
+
+## 🎉 PROJECT COMPLETE
+
+All PolyBench benchmarks simulate with **9.8% average error** and **23.9% max error**, well within the <20% average and <50% max targets from the spec.
 
 ---
 
@@ -158,6 +173,8 @@ M1 Firestorm's OoO execution effectively reduces load-to-use latency for loops:
 - The WAW check correctly prevents same-cycle co-issue but there's NO EXMEM forwarding for MADD's Ra (accumulator)
 - MADD Ra is read directly from register file (`s.regFile.ReadReg(inst.Rt2)`) bypassing all forwarding paths
 - Fixing MADD Ra forwarding + WAW bypass for consecutive MADD chains is the key to M4
+- The real bottleneck in 2mm was load-use stalls (2594 stall cycles = 21% of total), not WAW
+- Same-cycle MEM-to-EX forwarding (running memory stage before execute in same tick) eliminates load-use stalls, models M1's OoO execution effectively
 
 ---
 
@@ -174,3 +191,4 @@ M1 Firestorm's OoO execution effectively reduces load-to-use latency for loops:
 | 7 | Planning | Athena: deep accuracy analysis; found SIMD baseline issue; defined M3 |
 | 8-13 | Implementation+Verification | M3 complete: baselines corrected, avg error 28.9% |
 | 14 | Planning | Athena: deep pipeline analysis; found MADD WAW+Ra-forwarding issue; defined M4 |
+| 15-17 | Implementation+Verification | M4 complete: avg error 9.8%, max error 23.9% — PROJECT COMPLETE |
