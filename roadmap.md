@@ -39,7 +39,7 @@ jacobi-1d         2438        600   306.3%   FAIL ❌
 Average error: 123.6% (target: <20%)
 ```
 
-### M3: Fix Hardware Baselines + Calibrate Pipeline Parameters ⬜ IN PROGRESS
+### M3: Fix Hardware Baselines + Calibrate Pipeline Parameters ✅ DONE (Cycle 8-13)
 **Goal:** Two-pronged approach to reduce error:
 
 1. **Fix hardware baseline methodology**: The current baselines were measured with native macOS binaries that use SIMD/vector instructions for memory copy loops, while the simulator ELFs are compiled with `-march=armv8-a+nofp+nosimd` (scalar only). This creates an unfair comparison — hardware appears faster because it executes fewer (vectorized) instructions. Remeasure baselines using scalar-constrained native binaries.
@@ -65,12 +65,53 @@ Average error: 123.6% (target: <20%)
 
 **Cycles Budget:** 5
 
-### M4: OoO Execution / Advanced Calibration ⬜ NOT STARTED
-**Goal:** If M3 doesn't achieve <20% avg/<50% max, implement non-blocking load execution to model M1's out-of-order memory handling. Alternatively, further calibrate parameters.
+### M4: MADD Accumulator Chain Optimization ⬜ IN PROGRESS
+**Goal:** Reduce average error from 28.9% to <20% by fixing the MADD-accumulator pipeline issue.
 
-**Key insight**: The M1 Firestorm's 600+ ROB entries allow overlapping many loop iterations in flight. For memory-bound loops, this is the primary advantage. Non-blocking loads (allow slots 2-8 to execute while slot 1's load is in-flight) would capture ~2x of this benefit.
+**Root Cause Discovered (Athena, Cycle 14):**
 
-**Cycles Budget:** 8
+Deep pipeline analysis revealed:
+- M3 result: avg error 28.9% (max 43.2% for 2mm, already <50%)
+- 2mm/3mm have 43%/39% error because of a specific instruction pattern in their compiled inner loops
+- 2mm's inner loop is FULLY UNROLLED: 16 MADD instructions all accumulate into the SAME register (w23)
+- Current pipeline: WAW (Write-After-Write) hazard detection prevents consecutive MADD instructions from co-issuing when they write to the same register → only 2 instructions per cycle ([madd, ldr] groups)
+- GEMM works well (3.5% error) because it uses 16 DIFFERENT accumulator registers (w0, w17, w16, etc.) → no WAW → multiple MADDs co-issue → 3 instructions/cycle
+- Additionally, MADD Ra forwarding is MISSING: the accumulator (Ra) register of MADD reads from register file directly without EXMEM forwarding, potentially producing wrong results
+
+**Fix Required:**
+1. **MADD Ra forwarding**: In `timing/pipeline/pipeline.go` tickOctupleIssue execute section, for MADD/MSUB, forward Ra (accumulator register, stored in `inst.Rt2`) from EXMEM stages (same-cycle + 1-cycle-old) before passing to execute. Currently executes with `s.regFile.ReadReg(inst.Rt2)` which ignores EXMEM. 
+   - Specifically: compute `raValue` from EXMEM forwarding (check p.exmem, p.exmem2, p.exmem3 for Ra=inst.Rt2), then update the MADD result after `ExecuteWithFlags` call.
+
+2. **WAW bypass for MADD chains**: In `canIssueWith` (`timing/pipeline/superscalar.go`), relax the WAW check when:
+   - `prev.Inst.Op == OpMADD || prev.Inst.Op == OpMSUB` (previous is MADD)
+   - `new.Inst.Op == OpMADD || new.Inst.Op == OpMSUB` (new is also MADD)
+   - `prev.Rd == new.Rd` (same destination = WAW)
+   - `new.Inst.Rt2 == prev.Rd` (new MADD's Ra IS the previous MADD's result)
+   - In this case: ALLOW co-issue (WAW will resolve correctly via Ra forwarding)
+   - Still need RAW check for new MADD's Rn/Rm (multiplier operands)
+
+**Expected Impact:**
+- 2mm: 2 insts/cycle → 4 insts/cycle for main loop → sim cycles from 12422 to ~8000-9000 → error <15%
+- 3mm: similar improvement → error <10%  
+- jacobi-1d, atax, mvt, bicg: smaller impact (different loop structures)
+- Average error: 28.9% → estimated <15%
+- GEMM: NO CHANGE (already uses different accumulators, no WAW to bypass)
+
+**Acceptance Criteria:**
+1. `go test ./benchmarks/ -run TestPolybenchM1Accuracy -v -timeout 120s` shows:
+   - Average error < 20%  
+   - Max error < 50%
+   - gemm error remains < 10% (regression check)
+2. All 7 benchmarks exit with code 0 (no correctness regressions)
+3. `go build ./...` passes
+4. `go test ./timing/... -timeout 60s` passes
+
+**Cycles Budget:** 4
+
+**Files to change:**
+- `timing/pipeline/superscalar.go`: `canIssueWith()` — relax WAW for consecutive MADD/MSUB with same accumulator
+- `timing/pipeline/pipeline.go`: `tickOctupleIssue()` execute section — add MADD Ra forwarding from EXMEM stages
+- `timing/pipeline/stages.go`: `ExecuteWithFlags()` for OpMADD/OpMSUB — use idex.RmValue as Ra (after pipeline sets it up via forwarding) OR add inline Ra override
 
 ---
 
@@ -110,6 +151,13 @@ M1 Firestorm's OoO execution effectively reduces load-to-use latency for loops:
 - M1 Firestorm's deep OoO execution is the primary challenge for in-order modeling
 - In-order simulation achieves CPI 0.33-0.46 for PolyBench; hardware achieves 0.11-0.37
 - Fix baseline methodology FIRST before implementing complex OoO features
+- The `LoadLatency` config has NO EFFECT because `latencyTable` is never passed to the pipeline harness
+- The `ExecStalls` counter is always 0 for all benchmarks (latency table not used)
+- GEMM achieves high IPC (2.85) because compiler uses 16 DIFFERENT accumulator registers → no WAW
+- 2mm/3mm/jacobi have single-accumulator MADD chains → WAW limits to 2 insts/cycle (vs GEMM's 3)
+- The WAW check correctly prevents same-cycle co-issue but there's NO EXMEM forwarding for MADD's Ra (accumulator)
+- MADD Ra is read directly from register file (`s.regFile.ReadReg(inst.Rt2)`) bypassing all forwarding paths
+- Fixing MADD Ra forwarding + WAW bypass for consecutive MADD chains is the key to M4
 
 ---
 
@@ -124,3 +172,5 @@ M1 Firestorm's OoO execution effectively reduces load-to-use latency for loops:
 | 5 | Planning | Athena deep-dive: confirmed STP bug, planned M2 milestone |
 | 6 | Implementation | Leo+Ares: fixed STP, LDP Rt2; Maya: collected M1 baselines; all 7 polybench run |
 | 7 | Planning | Athena: deep accuracy analysis; found SIMD baseline issue; defined M3 |
+| 8-13 | Implementation+Verification | M3 complete: baselines corrected, avg error 28.9% |
+| 14 | Planning | Athena: deep pipeline analysis; found MADD WAW+Ra-forwarding issue; defined M4 |
