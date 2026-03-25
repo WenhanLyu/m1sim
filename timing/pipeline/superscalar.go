@@ -165,7 +165,15 @@ func canDualIssue(first, second *IDEXRegister) bool {
 
 	// Check for WAW hazard: both write to same register
 	if first.RegWrite && second.RegWrite && first.Rd == second.Rd && first.Rd != 31 {
-		return false
+		// Exception: allow consecutive MADD/MSUB accumulation chains where the
+		// second instruction's Ra (accumulator) is the first instruction's destination.
+		// Ra forwarding in the execute stage provides the correct accumulated value.
+		isMADDChain := (first.Inst != nil && (first.Inst.Op == insts.OpMADD || first.Inst.Op == insts.OpMSUB)) &&
+			(second.Inst != nil && (second.Inst.Op == insts.OpMADD || second.Inst.Op == insts.OpMSUB)) &&
+			second.Inst.Rt2 == first.Rd
+		if !isMADDChain {
+			return false
+		}
 	}
 
 	return true
@@ -1151,7 +1159,15 @@ func canIssueWith(newInst *IDEXRegister, earlier *[8]*IDEXRegister, earlierCount
 
 		// Check for WAW hazard: both write to same register
 		if prev.RegWrite && newInst.RegWrite && prev.Rd == newInst.Rd && prev.Rd != 31 {
-			return false
+			// Exception: allow consecutive MADD/MSUB accumulation chains where the
+			// new instruction's Ra (accumulator) is the prev instruction's destination.
+			// Ra forwarding in the execute stage provides the correct accumulated value.
+			isMADDChain := (prev.Inst != nil && (prev.Inst.Op == insts.OpMADD || prev.Inst.Op == insts.OpMSUB)) &&
+				(newInst.Inst != nil && (newInst.Inst.Op == insts.OpMADD || newInst.Inst.Op == insts.OpMSUB)) &&
+				newInst.Inst.Rt2 == prev.Rd
+			if !isMADDChain {
+				return false
+			}
 		}
 	}
 

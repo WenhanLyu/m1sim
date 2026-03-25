@@ -2724,6 +2724,64 @@ func (p *Pipeline) forwardFromAllSlots(reg uint8, currentValue uint64) uint64 {
 	return currentValue
 }
 
+// forwardFromNextMEMWB implements same-cycle MEM-to-EX forwarding for LOADS.
+// It checks the outputs of the current cycle's memory stage (nextMEMWB1..8),
+// which are computed before the execute stage in tickOctupleIssue.
+// Only forwards LOADED data (MemToReg=true), not ALU results (which are already
+// forwarded via p.exmem by forwardFromAllSlots).
+// This eliminates load-use stalls by forwarding loaded data within the same tick.
+func (p *Pipeline) forwardFromNextMEMWB(reg uint8, currentValue uint64,
+	m1 *MEMWBRegister, m2 *SecondaryMEMWBRegister, m3 *TertiaryMEMWBRegister,
+	m4 *QuaternaryMEMWBRegister, m5 *QuinaryMEMWBRegister, m6 *SenaryMEMWBRegister,
+	m7 *SeptenaryMEMWBRegister, m8 *OctonaryMEMWBRegister) uint64 {
+	if reg == 31 {
+		return currentValue
+	}
+	// Only forward LOADED data (MemToReg=true). ALU results are forwarded via exmem.
+	if m1 != nil && m1.Valid && m1.RegWrite && m1.MemToReg && m1.Rd == reg {
+		return m1.MemData
+	}
+	// For LDP in slot 1, also check Rt2
+	if m1 != nil && m1.Valid && m1.MemToReg && m1.Inst != nil && m1.Inst.Op == insts.OpLDP {
+		if m1.Inst.Rt2 != 31 && m1.Inst.Rt2 == reg {
+			return m1.MemData2
+		}
+	}
+	if m2 != nil && m2.Valid && m2.RegWrite && m2.MemToReg && m2.Rd == reg {
+		return m2.MemData
+	}
+	// For LDP in slot 2, also check Rt2
+	if m2 != nil && m2.Valid && m2.MemToReg && m2.Inst != nil && m2.Inst.Op == insts.OpLDP {
+		if m2.Inst.Rt2 != 31 && m2.Inst.Rt2 == reg {
+			return m2.MemData2
+		}
+	}
+	if m3 != nil && m3.Valid && m3.RegWrite && m3.MemToReg && m3.Rd == reg {
+		return m3.MemData
+	}
+	if m3 != nil && m3.Valid && m3.MemToReg && m3.Inst != nil && m3.Inst.Op == insts.OpLDP {
+		if m3.Inst.Rt2 != 31 && m3.Inst.Rt2 == reg {
+			return m3.MemData2
+		}
+	}
+	if m4 != nil && m4.Valid && m4.RegWrite && m4.MemToReg && m4.Rd == reg {
+		return m4.MemData
+	}
+	if m5 != nil && m5.Valid && m5.RegWrite && m5.MemToReg && m5.Rd == reg {
+		return m5.MemData
+	}
+	if m6 != nil && m6.Valid && m6.RegWrite && m6.MemToReg && m6.Rd == reg {
+		return m6.MemData
+	}
+	if m7 != nil && m7.Valid && m7.RegWrite && m7.MemToReg && m7.Rd == reg {
+		return m7.MemData
+	}
+	if m8 != nil && m8.Valid && m8.RegWrite && m8.MemToReg && m8.Rd == reg {
+		return m8.MemData
+	}
+	return currentValue
+}
+
 // flushAllIFID clears all IF/ID pipeline registers.
 //
 //nolint:unused // Scaffolding for 4-wide implementation (PR #114)
@@ -4465,6 +4523,16 @@ func (p *Pipeline) tickOctupleIssue() {
 			rnValue = p.forwardFromAllSlots(p.idex.Rn, rnValue)
 			rmValue = p.forwardFromAllSlots(p.idex.Rm, rmValue)
 
+			// Same-cycle MEM-to-EX forwarding: the memory stage ran earlier this tick
+			// and computed nextMEMWB1..8 from loads in p.exmem1..8. Forward the loaded
+			// data to this cycle's execute, eliminating load-use stalls (matches M1 OoO).
+			rnValue = p.forwardFromNextMEMWB(p.idex.Rn, rnValue,
+				&nextMEMWB, &nextMEMWB2, &nextMEMWB3, &nextMEMWB4,
+				&nextMEMWB5, &nextMEMWB6, &nextMEMWB7, &nextMEMWB8)
+			rmValue = p.forwardFromNextMEMWB(p.idex.Rm, rmValue,
+				&nextMEMWB, &nextMEMWB2, &nextMEMWB3, &nextMEMWB4,
+				&nextMEMWB5, &nextMEMWB6, &nextMEMWB7, &nextMEMWB8)
+
 			// Check for PSTATE flag forwarding from all EXMEM stages (octuple-issue).
 			// CMP can execute in any slot, and B.cond in slot 0 needs the flags.
 			forwardFlags := false
@@ -4523,6 +4591,29 @@ func (p *Pipeline) tickOctupleIssue() {
 
 			execResult := p.executeStage.ExecuteWithFlags(&p.idex, rnValue, rmValue,
 				forwardFlags, fwdN, fwdZ, fwdC, fwdV)
+
+			// MADD/MSUB Ra forwarding (slot 0): the Execute stage reads Ra directly from
+			// the register file, bypassing EXMEM forwarding. Override ALUResult using the
+			// properly forwarded Ra value to handle consecutive MADD accumulation chains.
+			if p.idex.Inst != nil && (p.idex.Inst.Op == insts.OpMADD || p.idex.Inst.Op == insts.OpMSUB) {
+				ra := p.idex.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if p.idex.Inst.Op == insts.OpMADD {
+						if p.idex.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else { // OpMSUB
+						if p.idex.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 
 			storeValue := execResult.StoreValue
 			if p.idex.MemWrite {
@@ -4671,6 +4762,29 @@ func (p *Pipeline) tickOctupleIssue() {
 			idex2 := p.idex2.toIDEX()
 			execResult := p.executeStage.ExecuteWithFlags(&idex2, rnValue, rmValue,
 				forwardFlags2, fwdN2, fwdZ2, fwdC2, fwdV2)
+			// MADD/MSUB Ra forwarding (slot 2): also check same-cycle slot 0 (nextEXMEM).
+			if p.idex2.Inst != nil && (p.idex2.Inst.Op == insts.OpMADD || p.idex2.Inst.Op == insts.OpMSUB) {
+				ra := p.idex2.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if nextEXMEM.Valid && nextEXMEM.RegWrite && !nextEXMEM.MemRead && nextEXMEM.Rd == ra {
+						raValue = nextEXMEM.ALUResult
+					}
+					if p.idex2.Inst.Op == insts.OpMADD {
+						if p.idex2.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else {
+						if p.idex2.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 			nextEXMEM2 = SecondaryEXMEMRegister{
 				Valid:      true,
 				PC:         p.idex2.PC,
@@ -4813,6 +4927,32 @@ func (p *Pipeline) tickOctupleIssue() {
 			idex3 := p.idex3.toIDEX()
 			execResult := p.executeStage.ExecuteWithFlags(&idex3, rnValue, rmValue,
 				forwardFlags3, fwdN3, fwdZ3, fwdC3, fwdV3)
+			// MADD/MSUB Ra forwarding (slot 3): also check same-cycle slots 0-1.
+			if p.idex3.Inst != nil && (p.idex3.Inst.Op == insts.OpMADD || p.idex3.Inst.Op == insts.OpMSUB) {
+				ra := p.idex3.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if nextEXMEM.Valid && nextEXMEM.RegWrite && !nextEXMEM.MemRead && nextEXMEM.Rd == ra {
+						raValue = nextEXMEM.ALUResult
+					}
+					if nextEXMEM2.Valid && nextEXMEM2.RegWrite && !nextEXMEM2.MemRead && nextEXMEM2.Rd == ra {
+						raValue = nextEXMEM2.ALUResult
+					}
+					if p.idex3.Inst.Op == insts.OpMADD {
+						if p.idex3.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else {
+						if p.idex3.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 			nextEXMEM3 = TertiaryEXMEMRegister{
 				Valid:      true,
 				PC:         p.idex3.PC,
@@ -4960,6 +5100,35 @@ func (p *Pipeline) tickOctupleIssue() {
 			idex4 := p.idex4.toIDEX()
 			execResult := p.executeStage.ExecuteWithFlags(&idex4, rnValue, rmValue,
 				forwardFlags4, fwdN4, fwdZ4, fwdC4, fwdV4)
+			// MADD/MSUB Ra forwarding (slot 4): also check same-cycle slots 0-2.
+			if p.idex4.Inst != nil && (p.idex4.Inst.Op == insts.OpMADD || p.idex4.Inst.Op == insts.OpMSUB) {
+				ra := p.idex4.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if nextEXMEM.Valid && nextEXMEM.RegWrite && !nextEXMEM.MemRead && nextEXMEM.Rd == ra {
+						raValue = nextEXMEM.ALUResult
+					}
+					if nextEXMEM2.Valid && nextEXMEM2.RegWrite && !nextEXMEM2.MemRead && nextEXMEM2.Rd == ra {
+						raValue = nextEXMEM2.ALUResult
+					}
+					if nextEXMEM3.Valid && nextEXMEM3.RegWrite && !nextEXMEM3.MemRead && nextEXMEM3.Rd == ra {
+						raValue = nextEXMEM3.ALUResult
+					}
+					if p.idex4.Inst.Op == insts.OpMADD {
+						if p.idex4.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else {
+						if p.idex4.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 			nextEXMEM4 = QuaternaryEXMEMRegister{
 				Valid:      true,
 				PC:         p.idex4.PC,
@@ -5114,6 +5283,38 @@ func (p *Pipeline) tickOctupleIssue() {
 			idex5 := p.idex5.toIDEX()
 			execResult := p.executeStage.ExecuteWithFlags(&idex5, rnValue, rmValue,
 				forwardFlags5, fwdN5, fwdZ5, fwdC5, fwdV5)
+			// MADD/MSUB Ra forwarding (slot 5): also check same-cycle slots 0-3.
+			if p.idex5.Inst != nil && (p.idex5.Inst.Op == insts.OpMADD || p.idex5.Inst.Op == insts.OpMSUB) {
+				ra := p.idex5.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if nextEXMEM.Valid && nextEXMEM.RegWrite && !nextEXMEM.MemRead && nextEXMEM.Rd == ra {
+						raValue = nextEXMEM.ALUResult
+					}
+					if nextEXMEM2.Valid && nextEXMEM2.RegWrite && !nextEXMEM2.MemRead && nextEXMEM2.Rd == ra {
+						raValue = nextEXMEM2.ALUResult
+					}
+					if nextEXMEM3.Valid && nextEXMEM3.RegWrite && !nextEXMEM3.MemRead && nextEXMEM3.Rd == ra {
+						raValue = nextEXMEM3.ALUResult
+					}
+					if nextEXMEM4.Valid && nextEXMEM4.RegWrite && !nextEXMEM4.MemRead && nextEXMEM4.Rd == ra {
+						raValue = nextEXMEM4.ALUResult
+					}
+					if p.idex5.Inst.Op == insts.OpMADD {
+						if p.idex5.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else {
+						if p.idex5.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 			nextEXMEM5 = QuinaryEXMEMRegister{
 				Valid:      true,
 				PC:         p.idex5.PC,
@@ -5279,6 +5480,41 @@ func (p *Pipeline) tickOctupleIssue() {
 			idex6 := p.idex6.toIDEX()
 			execResult := p.executeStage.ExecuteWithFlags(&idex6, rnValue, rmValue,
 				forwardFlags6, fwdN6, fwdZ6, fwdC6, fwdV6)
+			// MADD/MSUB Ra forwarding (slot 6): also check same-cycle slots 0-4.
+			if p.idex6.Inst != nil && (p.idex6.Inst.Op == insts.OpMADD || p.idex6.Inst.Op == insts.OpMSUB) {
+				ra := p.idex6.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if nextEXMEM.Valid && nextEXMEM.RegWrite && !nextEXMEM.MemRead && nextEXMEM.Rd == ra {
+						raValue = nextEXMEM.ALUResult
+					}
+					if nextEXMEM2.Valid && nextEXMEM2.RegWrite && !nextEXMEM2.MemRead && nextEXMEM2.Rd == ra {
+						raValue = nextEXMEM2.ALUResult
+					}
+					if nextEXMEM3.Valid && nextEXMEM3.RegWrite && !nextEXMEM3.MemRead && nextEXMEM3.Rd == ra {
+						raValue = nextEXMEM3.ALUResult
+					}
+					if nextEXMEM4.Valid && nextEXMEM4.RegWrite && !nextEXMEM4.MemRead && nextEXMEM4.Rd == ra {
+						raValue = nextEXMEM4.ALUResult
+					}
+					if nextEXMEM5.Valid && nextEXMEM5.RegWrite && !nextEXMEM5.MemRead && nextEXMEM5.Rd == ra {
+						raValue = nextEXMEM5.ALUResult
+					}
+					if p.idex6.Inst.Op == insts.OpMADD {
+						if p.idex6.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else {
+						if p.idex6.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 			nextEXMEM6 = SenaryEXMEMRegister{
 				Valid:      true,
 				PC:         p.idex6.PC,
@@ -5455,6 +5691,44 @@ func (p *Pipeline) tickOctupleIssue() {
 			idex7 := p.idex7.toIDEX()
 			execResult := p.executeStage.ExecuteWithFlags(&idex7, rnValue, rmValue,
 				forwardFlags7, fwdN7, fwdZ7, fwdC7, fwdV7)
+			// MADD/MSUB Ra forwarding (slot 7): also check same-cycle slots 0-5.
+			if p.idex7.Inst != nil && (p.idex7.Inst.Op == insts.OpMADD || p.idex7.Inst.Op == insts.OpMSUB) {
+				ra := p.idex7.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if nextEXMEM.Valid && nextEXMEM.RegWrite && !nextEXMEM.MemRead && nextEXMEM.Rd == ra {
+						raValue = nextEXMEM.ALUResult
+					}
+					if nextEXMEM2.Valid && nextEXMEM2.RegWrite && !nextEXMEM2.MemRead && nextEXMEM2.Rd == ra {
+						raValue = nextEXMEM2.ALUResult
+					}
+					if nextEXMEM3.Valid && nextEXMEM3.RegWrite && !nextEXMEM3.MemRead && nextEXMEM3.Rd == ra {
+						raValue = nextEXMEM3.ALUResult
+					}
+					if nextEXMEM4.Valid && nextEXMEM4.RegWrite && !nextEXMEM4.MemRead && nextEXMEM4.Rd == ra {
+						raValue = nextEXMEM4.ALUResult
+					}
+					if nextEXMEM5.Valid && nextEXMEM5.RegWrite && !nextEXMEM5.MemRead && nextEXMEM5.Rd == ra {
+						raValue = nextEXMEM5.ALUResult
+					}
+					if nextEXMEM6.Valid && nextEXMEM6.RegWrite && !nextEXMEM6.MemRead && nextEXMEM6.Rd == ra {
+						raValue = nextEXMEM6.ALUResult
+					}
+					if p.idex7.Inst.Op == insts.OpMADD {
+						if p.idex7.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else {
+						if p.idex7.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 			nextEXMEM7 = SeptenaryEXMEMRegister{
 				Valid:      true,
 				PC:         p.idex7.PC,
@@ -5642,6 +5916,47 @@ func (p *Pipeline) tickOctupleIssue() {
 			idex8 := p.idex8.toIDEX()
 			execResult := p.executeStage.ExecuteWithFlags(&idex8, rnValue, rmValue,
 				forwardFlags8, fwdN8, fwdZ8, fwdC8, fwdV8)
+			// MADD/MSUB Ra forwarding (slot 8): also check same-cycle slots 0-6.
+			if p.idex8.Inst != nil && (p.idex8.Inst.Op == insts.OpMADD || p.idex8.Inst.Op == insts.OpMSUB) {
+				ra := p.idex8.Inst.Rt2
+				if ra != 31 {
+					raValue := p.forwardFromAllSlots(ra, p.regFile.ReadReg(ra))
+					if nextEXMEM.Valid && nextEXMEM.RegWrite && !nextEXMEM.MemRead && nextEXMEM.Rd == ra {
+						raValue = nextEXMEM.ALUResult
+					}
+					if nextEXMEM2.Valid && nextEXMEM2.RegWrite && !nextEXMEM2.MemRead && nextEXMEM2.Rd == ra {
+						raValue = nextEXMEM2.ALUResult
+					}
+					if nextEXMEM3.Valid && nextEXMEM3.RegWrite && !nextEXMEM3.MemRead && nextEXMEM3.Rd == ra {
+						raValue = nextEXMEM3.ALUResult
+					}
+					if nextEXMEM4.Valid && nextEXMEM4.RegWrite && !nextEXMEM4.MemRead && nextEXMEM4.Rd == ra {
+						raValue = nextEXMEM4.ALUResult
+					}
+					if nextEXMEM5.Valid && nextEXMEM5.RegWrite && !nextEXMEM5.MemRead && nextEXMEM5.Rd == ra {
+						raValue = nextEXMEM5.ALUResult
+					}
+					if nextEXMEM6.Valid && nextEXMEM6.RegWrite && !nextEXMEM6.MemRead && nextEXMEM6.Rd == ra {
+						raValue = nextEXMEM6.ALUResult
+					}
+					if nextEXMEM7.Valid && nextEXMEM7.RegWrite && !nextEXMEM7.MemRead && nextEXMEM7.Rd == ra {
+						raValue = nextEXMEM7.ALUResult
+					}
+					if p.idex8.Inst.Op == insts.OpMADD {
+						if p.idex8.Inst.Is64Bit {
+							execResult.ALUResult = raValue + rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) + uint32(rnValue)*uint32(rmValue))
+						}
+					} else {
+						if p.idex8.Inst.Is64Bit {
+							execResult.ALUResult = raValue - rnValue*rmValue
+						} else {
+							execResult.ALUResult = uint64(uint32(raValue) - uint32(rnValue)*uint32(rmValue))
+						}
+					}
+				}
+			}
 			nextEXMEM8 = OctonaryEXMEMRegister{
 				Valid:      true,
 				PC:         p.idex8.PC,
@@ -5727,30 +6042,11 @@ func (p *Pipeline) tickOctupleIssue() {
 		}
 	}
 
-	// Detect load-use hazards for primary decode
+	// Load-use hazards are eliminated via same-cycle MEM-to-EX forwarding.
+	// The memory stage already ran this tick (above) and computed nextMEMWB1..8.
+	// The execute stage below will forward from nextMEMWB, so no stall is needed.
+	// This matches M1's OoO behavior where effective load latency = 1 cycle with forwarding.
 	loadUseHazard := false
-	if p.idex.Valid && p.idex.MemRead && p.idex.Rd != 31 && p.ifid.Valid {
-		nextInst := p.decodeStage.decoder.Decode(p.ifid.InstructionWord)
-		if nextInst != nil && nextInst.Op != insts.OpUnknown {
-			usesRn := true
-			usesRm := nextInst.Format == insts.FormatDPReg
-
-			sourceRm := nextInst.Rm
-			switch nextInst.Op {
-			case insts.OpSTR, insts.OpSTRQ:
-				usesRm = true
-				sourceRm = nextInst.Rd
-			}
-
-			loadUseHazard = p.hazardUnit.DetectLoadUseHazardDecoded(
-				p.idex.Rd, nextInst.Rn, sourceRm, usesRn, usesRm)
-			// Also check load-use hazard for LDP's second register (Rt2).
-			if !loadUseHazard && p.idex.Inst != nil && p.idex.Inst.Op == insts.OpLDP {
-				loadUseHazard = p.hazardUnit.DetectLoadUseHazardLDPRt2(
-					p.idex.Inst.Rt2, nextInst.Rn, sourceRm, usesRn, usesRm)
-			}
-		}
-	}
 
 	stallResult := p.hazardUnit.ComputeStalls(loadUseHazard || execStall || memStall, false)
 
